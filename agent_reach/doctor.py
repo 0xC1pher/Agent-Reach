@@ -32,6 +32,28 @@ def check_all(config: Config) -> Dict[str, dict]:
             "backends": ch.backends,
             "active_backend": active,
         }
+
+    # Check FCC proxy status
+    fcc_url = config.get("fcc_proxy_url") if config else None
+    if fcc_url:
+        results["fcc_proxy"] = {
+            "status": "ok",
+            "name": "Free Claude Code (transcripción)",
+            "message": f"Proxy configurado: {fcc_url}",
+            "tier": 1,
+            "backends": ["fcc"],
+            "active_backend": "fcc",
+        }
+    else:
+        results["fcc_proxy"] = {
+            "status": "off",
+            "name": "Free Claude Code (transcripción)",
+            "message": "Proxy no configurado. Configurar con: agent-reach configure fcc-proxy http://localhost:8082",
+            "tier": 1,
+            "backends": ["fcc"],
+            "active_backend": None,
+        }
+
     return results
 
 

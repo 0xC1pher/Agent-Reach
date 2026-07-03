@@ -1,117 +1,95 @@
-# Agent Reach — Update Guide
+# Agent Reach — Guía de actualización
 
-## For Humans
+## Para humanos
 
-Copy this to your AI Agent:
-
-```
-帮我更新 Agent Reach：https://raw.githubusercontent.com/Panniantong/agent-reach/main/docs/update.md
-```
-
-Or in English:
+Copia esto para tu AI Agent:
 
 ```
-Update Agent Reach: https://raw.githubusercontent.com/Panniantong/agent-reach/main/docs/update.md
+Actualiza Agent Reach: https://raw.githubusercontent.com/Panniantong/agent-reach/main/docs/update.md
 ```
 
 ---
 
-## For AI Agents
+## Para AI Agents
 
-### ⚠️ Workspace Rules
+### ⚠️ Reglas del directorio de trabajo
 
-**Never create files, clone repos, or run commands in the agent workspace.** Use `/tmp/` for temporary work and `~/.agent-reach/` for persistent data.
+**Nunca crees archivos, clones repos o ejecutes comandos en el directorio de trabajo del agent.** Usa `/tmp/` para trabajo temporal y `~/.agent-reach/` para datos persistentes.
 
-### Goal
+### Objetivo
 
-Update Agent Reach to the latest version, refresh upstream tools, migrate from retired backends, and verify everything works. The user should not need to do anything manually (except things only a human can do, like clicking a browser-extension install button).
+Actualizar Agent Reach a la última versión, refrescar herramientas upstream, migrar de backends retirados y verificar que todo funcione. El usuario no debería necesitar hacer nada manualmente (excepto cosas que solo un humano puede hacer, como hacer clic en un botón de instalación de extensión del navegador).
 
-### Step 1: Check current version
+### Paso 1: Verificar versión actual
 
 ```bash
 agent-reach check-update
 ```
 
-If it says "已是最新版本", skip to Step 4 (verify). Otherwise continue.
+Si dice "ya estás en la última versión", salta al Paso 4 (verificación). Si no, continúa.
 
-### Step 2: Update Agent Reach package
+### Paso 2: Actualizar el paquete Agent Reach
 
 ```bash
 pip install --upgrade https://github.com/Panniantong/agent-reach/archive/main.zip
 ```
 
-> If pip complains about `externally-managed-environment` (PEP 668), the user
-> originally installed via pipx or a venv — use the matching command:
+> Si pip muestra error de `externally-managed-environment` (PEP 668), el usuario
+> instaló originalmente con pipx o un venv — usa el comando correspondiente:
 > `pipx install --force https://github.com/Panniantong/agent-reach/archive/main.zip`
-> or activate `~/.agent-reach-venv` first.
+> o activa `~/.agent-reach-venv` primero.
 
-### Step 3: Refresh upstream tools
+### Paso 3: Refrescar herramientas upstream
 
-Run these to keep installed tools current. **Only upgrade what is already
-installed — do not install new tools the user never asked for** (the one
-exception: OpenCLI on desktop, see below).
+Ejecuta estos comandos para mantener las herramientas instaladas actualizadas. **Solo actualiza lo que ya esté instalado — no instales herramientas nuevas que el usuario nunca pidió** (la única excepción: OpenCLI en escritorio, ver más abajo).
 
 ```bash
-# Python-based CLIs the user already has (upgrade keeps signatures fresh)
+# CLIs basados en Python que el usuario ya tiene (actualizar mantiene las firmas frescas)
 which twitter >/dev/null 2>&1 && { pipx upgrade twitter-cli 2>/dev/null || uv tool upgrade twitter-cli 2>/dev/null; }
 which bili    >/dev/null 2>&1 && { pipx upgrade bilibili-cli 2>/dev/null || uv tool upgrade bilibili-cli 2>/dev/null; }
 which xhs     >/dev/null 2>&1 && { pipx upgrade xiaohongshu-cli 2>/dev/null || uv tool upgrade xiaohongshu-cli 2>/dev/null; }
 which yt-dlp  >/dev/null 2>&1 && { pipx upgrade yt-dlp 2>/dev/null || uv tool upgrade yt-dlp 2>/dev/null || pip install -U yt-dlp 2>/dev/null; }
 
-# rdt-cli is pinned to a git source (PyPI lags upstream) — same pin as the code's _RDT_GIT_SOURCE
+# rdt-cli está fijado a una fuente git (PyPI va más lento) — misma fijación que _RDT_GIT_SOURCE del código
 which rdt >/dev/null 2>&1 && pipx install --force 'git+https://github.com/public-clis/rdt-cli.git@5e4fb3720d5c174e976cd425ccc3b879d52cac66' 2>/dev/null
 
-# npm-based
+# Basados en npm
 which mcporter >/dev/null 2>&1 && npm update -g mcporter 2>/dev/null
 which opencli  >/dev/null 2>&1 && npm update -g @jackwener/opencli 2>/dev/null
 ```
 
-**Desktop users without OpenCLI**: since v1.5.0 OpenCLI is the preferred
-backend for 小红书/Reddit (and adds B站 subtitles) by riding the user's
-browser session. Offer it once:
+**Usuarios de escritorio sin OpenCLI**: desde la v1.5.0, OpenCLI es el backend preferido para Xiaohongshu/Reddit (y añade subtítulos de Bilibili) aprovechando la sesión del navegador. Ofrécelo una vez:
 
-> "这次更新引入了 OpenCLI 后端（复用你的浏览器登录态，小红书/Reddit 零配置）。要装吗？装完只需你在 Chrome 商店点一次『添加扩展』。"
+> "Esta actualización introduce el backend OpenCLI (reutiliza tu login del navegador, Xiaohongshu/Reddit cero configuración). ¿Quieres instalarlo? Solo necesitas hacer clic una vez en 'Añadir extensión' en la Chrome Web Store."
 
-If yes: `agent-reach install --channels opencli` and guide them through the
-extension click. If no, everything keeps working on existing backends.
+Si sí: `agent-reach install --channels opencli` y guíalo para el clic de la extensión. Si no, todo sigue funcionando con los backends existentes.
 
-### Step 4: Coexistence (DO NOT uninstall old tools)
+### Paso 4: Coexistencia (NO desinstales herramientas viejas)
 
-**Never uninstall tools the user already has.** Retired backends (e.g. yt-dlp
-no longer serves Bilibili; xhs-cli is no longer installed by default) keep
-working as fallbacks where they still function. Agent Reach routes around
-them automatically — removal is the user's call, not yours.
+**Nunca desinstales herramientas que el usuario ya tenga.** Los backends retirados (ej. yt-dlp ya no sirve para Bilibili; xhs-cli ya no se instala por defecto) siguen funcionando como respaldos donde aún funcionan. Agent Reach los evita automáticamente — la eliminación es decisión del usuario, no tuya.
 
-### Step 5: Verify
+### Paso 5: Verificar
 
 ```bash
 agent-reach version
 agent-reach doctor
 ```
 
-Running `agent-reach doctor` (text mode) also makes sure an Agent Reach skill
-exists in detected agent skill directories. If the user already has a skill
-there, doctor preserves it instead of overwriting local customizations. Use
-`agent-reach skill --install` when you explicitly want to refresh the bundled
-skill files.
+Ejecutar `agent-reach doctor` (modo texto) también asegura que exista un skill de Agent Reach en los directorios de skills del agent detectados. Si el usuario ya tiene un skill ahí, doctor lo preserva en lugar de sobrescribir personalizaciones locales. Usa `agent-reach skill --install` cuando quieras explícitamente refrescar los archivos skill incluidos.
 
-Check the doctor output:
+Revisa la salida de doctor:
 
-- Every channel shows ✅ / [!] with a clear message, and multi-backend
-  channels (小红书/Reddit/B站/Twitter) report `当前后端：…`
-- If a previously-working channel now shows [X]/error, the message contains
-  the exact fix (e.g. a venv-reinstall prescription) — run it, then re-check
-- `--json` gives the same data machine-readably (`active_backend` per channel)
+- Cada canal muestra ✅ / [!] con un mensaje claro, y los canales con múltiples backends (Xiaohongshu/Reddit/Bilibili/Twitter) reportan `backend actual: …`
+- Si un canal que antes funcionaba ahora muestra [X]/error, el mensaje contiene la solución exacta (ej. receta de reinstalar venv) — ejecútala y vuelve a verificar
+- `--json` da los mismos datos en formato máquina (`active_backend` por canal)
 
-### Step 6: Report to user
+### Paso 6: Reportar al usuario
 
-Tell the user:
+Dile al usuario:
 
-1. What version they're on now (`agent-reach version`)
-2. How many channels are available, and which backend each multi-backend
-   platform is using (from doctor)
-3. Anything that needs their action (e.g. Chrome extension click, `xhs login`,
-   QR scan for xiaohongshu-mcp on servers)
-4. What changed in this update (release notes shown by `check-update`)
+1. En qué versión está ahora (`agent-reach version`)
+2. Cuántos canales están disponibles y qué backend está usando cada plataforma con múltiples backends (de doctor)
+3. Algo que necesite su acción (ej. clic en extensión de Chrome, `xhs login`, escanear QR para xiaoyuzhou-mcp en servidores)
+4. Qué cambió en esta actualización (notas de release que muestra `check-update`)
 
-Done.
+Listo.

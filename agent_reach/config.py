@@ -27,6 +27,8 @@ class Config:
         "groq_whisper": ["groq_api_key"],
         "openai_whisper": ["openai_api_key"],
         "github_token": ["github_token"],
+        "fcc_proxy": ["fcc_proxy_url"],
+        "kittentts": ["kittentts_model"],
     }
 
     def __init__(self, config_path: Optional[Path] = None):

@@ -18,6 +18,12 @@ def fake_config(tmp_path, monkeypatch):
     cfg_path = tmp_path / "config.yaml"
     monkeypatch.setattr(Config, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(Config, "CONFIG_FILE", cfg_path)
+    # Isolate from env vars — tests must not leak real API keys
+    for key in [
+        "GROQ_API_KEY", "OPENAI_API_KEY", "FCC_PROXY_URL", "FCC_PROXY_TOKEN",
+        "KITTENTTS_MODEL", "GITHUB_TOKEN",
+    ]:
+        monkeypatch.delenv(key, raising=False)
     cfg = Config(config_path=cfg_path)
     return cfg
 
