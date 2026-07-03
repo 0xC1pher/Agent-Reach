@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import os
 from unittest.mock import patch
 
 import agent_reach.cli as cli
@@ -10,7 +11,8 @@ class _DummyConfig:
         return None
 
 
-def test_install_xiaoyuzhou_deps_does_not_raise_when_no_groq_key(capsys):
+def test_install_xiaoyuzhou_deps_does_not_raise_when_no_groq_key(capsys, monkeypatch):
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
     with patch("agent_reach.config.Config", return_value=_DummyConfig()), \
          patch("os.path.isfile", side_effect=lambda p: True if str(p).endswith("transcribe.sh") else False), \
          patch("shutil.which", return_value=None):

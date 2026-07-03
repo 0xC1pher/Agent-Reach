@@ -82,7 +82,9 @@ def main():
     p_conf.add_argument("key", nargs="?", default=None,
                         choices=["proxy", "github-token", "groq-key", "openai-key",
                                  "twitter-cookies", "youtube-cookies",
-                                 "xhs-cookies"],
+                                 "xhs-cookies", "fcc-proxy", "fcc-token",
+                                 "kittentts-model", "katy-voice", "katy-speed",
+                                 "katy-4bit"],
                         help="What to configure (omit if using --from-browser)")
     p_conf.add_argument("value", nargs="*", help="The value(s) to set")
     p_conf.add_argument("--from-browser", metavar="BROWSER",
@@ -112,6 +114,34 @@ def main():
     # ── format ──
     p_format = sub.add_parser("format", help="Clean and format platform API output")
     p_format.add_argument("platform", choices=["xhs"], help="Platform to format (xhs)")
+
+    # ── tts ──
+    p_tts = sub.add_parser("tts", help="Text-to-speech via KittenTTS (local)")
+    p_tts.add_argument("text", help="Text to synthesize")
+    p_tts.add_argument("-o", "--output", default=None,
+                       help="Output audio file path (default: auto-generated)")
+    p_tts.add_argument("--voice", default=None,
+                       help="Voice name (default: expr-voice-2-m)")
+    p_tts.add_argument("--speed", type=float, default=None,
+                       help="Speech speed (default: 1.0)")
+
+    # ── stt ──
+    p_stt = sub.add_parser("stt", help="Speech-to-text via Whisper (Groq/OpenAI)")
+    p_stt.add_argument("source", help="Audio file path or URL")
+    p_stt.add_argument("--provider", choices=["auto", "groq", "openai", "fcc"], default="auto",
+                       help="STT provider (default: auto = fcc → groq → openai fallback)")
+    p_stt.add_argument("-o", "--output", default=None,
+                       help="Write transcript to a file instead of stdout")
+
+    # ── katy ──
+    p_katy = sub.add_parser("katy", help="Katy — asistente de voz local (Gemma 3n + KittenTTS)")
+    katy_sub = p_katy.add_subparsers(dest="katy_action", help="Acción de Katy")
+    katy_listen = katy_sub.add_parser("listen", help="Escuchar y entender audio")
+    katy_listen.add_argument("audio", help="Archivo de audio a procesar")
+    katy_speak = katy_sub.add_parser("speak", help="Generar voz desde texto")
+    katy_speak.add_argument("text", help="Texto para synthesizar")
+    katy_speak.add_argument("-o", "--output", default=None, help="Archivo de salida")
+    katy_chat = katy_sub.add_parser("chat", help="Chat de voz interactivo")
 
     # ── check-update ──
     # ── transcribe ──
@@ -163,6 +193,12 @@ def main():
         _cmd_format(args)
     elif args.command == "transcribe":
         _cmd_transcribe(args)
+    elif args.command == "tts":
+        _cmd_tts(args)
+    elif args.command == "stt":
+        _cmd_stt(args)
+    elif args.command == "katy":
+        _cmd_katy(args)
 
 
 # ── Command handlers ────────────────────────────────
@@ -1130,6 +1166,143 @@ def _cmd_configure(args):
     elif args.key == "openai-key":
         config.set("openai_api_key", value)
         print(f"✅ OpenAI key configured!")
+
+    elif args.key == "fcc-proxy":
+        config.set("fcc_proxy_url", value)
+        print(f"✅ Free Claude Code proxy URL configured: {value}")
+        print("   Agent Reach will use FCC as first-choice provider for transcription.")
+
+    elif args.key == "fcc-token":
+        config.set("fcc_proxy_token", value)
+        print(f"✅ Free Claude Code proxy token configured!")
+
+    elif args.key == "kittentts-model":
+        config.set("kittentts_model", value)
+        print(f"✅ KittenTTS model configured: {value}")
+    elif args.key == "katy-voice":
+        config.set("katy_voice", value)
+        print(f"✅ Katy voice configured: {value}")
+    elif args.key == "katy-speed":
+        config.set("katy_speed", value)
+        print(f"✅ Katy speed configured: {value}")
+    elif args.key == "katy-4bit":
+        config.set("katy_4bit", value)
+        print(f"✅ Katy 4-bit mode configured: {value}")
+
+
+def _cmd_katy(args):
+    """Katy — asistente de voz local."""
+    import os
+    import tempfile
+
+    from agent_reach.channels.katy import KatyChannel
+    from agent_reach.config import Config
+
+    # Set espeak library path
+    espeak_dll = r"C:\Program Files\eSpeak NG\libespeak-ng.dll"
+    if os.path.isfile(espeak_dll) and "PHONEMIZER_ESPEAK_LIBRARY" not in os.environ:
+        os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = espeak_dll
+
+    ch = KatyChannel()
+    status, msg = ch.check()
+    if status != "ok":
+        print(f"❌ {msg}")
+        sys.exit(1)
+
+    if args.katy_action == "listen":
+        text = ch.listen(args.audio)
+        print(f"[Katy] Entendí: {text}")
+
+    elif args.katy_action == "speak":
+        output = args.output
+        if not output:
+            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                output = f.name
+        result = ch.speak(args.text, output)
+        print(f"[Katy] Audio generado: {result}")
+
+    elif args.katy_action == "chat":
+        print("[Katy] Modo chat de voz. Di algo (o escribe 'salir' para terminar)")
+        while True:
+            try:
+                user_input = input("\n[Tú] > ").strip()
+                if user_input.lower() in ("salir", "exit", "quit"):
+                    print("[Katy] ¡Hasta luego!")
+                    break
+
+                if user_input:
+                    # Text input → speak response
+                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                        response_audio = f.name
+                    ch.speak(f"Entendí: {user_input}", response_audio)
+                    print(f"[Katy] Audio: {response_audio}")
+
+            except KeyboardInterrupt:
+                print("\n[Katy] ¡Hasta luego!")
+                break
+            except EOFError:
+                break
+
+    else:
+        print("Uso: agent-reach katy [listen|speak|chat]")
+        sys.exit(1)
+
+
+def _cmd_stt(args):
+    """Speech-to-text via Whisper (Groq → OpenAI fallback)."""
+    from pathlib import Path
+
+    from agent_reach.transcribe import TranscribeError, transcribe
+
+    try:
+        text = transcribe(args.source, provider=args.provider)
+    except TranscribeError as e:
+        print(f"❌ {e}")
+        sys.exit(1)
+
+    if args.output:
+        Path(args.output).write_text(text + "\n", encoding="utf-8")
+        print(f"✅ Transcript written to {args.output}")
+    else:
+        print(text)
+
+
+def _cmd_tts(args):
+    """Text-to-speech via KittenTTS (local)."""
+    import os
+    from pathlib import Path
+
+    from agent_reach.config import Config
+
+    # Set espeak library path for phonemizer
+    espeak_dll = r"C:\Program Files\eSpeak NG\libespeak-ng.dll"
+    if os.path.isfile(espeak_dll) and "PHONEMIZER_ESPEAK_LIBRARY" not in os.environ:
+        os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = espeak_dll
+
+    try:
+        from agent_reach.channels.kittentts import KittenTTSChannel
+        ch = KittenTTSChannel()
+        status, msg = ch.check()
+        if status != "ok":
+            print(f"❌ {msg}")
+            sys.exit(1)
+
+        output = args.output or "tts_output.wav"
+        voice = args.voice
+        speed = args.speed
+
+        # Temporarily set config values if provided
+        cfg = Config()
+        if voice:
+            cfg.set("kittentts_voice", voice)
+        if speed is not None:
+            cfg.set("kittentts_speed", str(speed))
+
+        result = ch.synthesize(args.text, output, config=cfg)
+        print(f"✅ Audio generado: {result}")
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        sys.exit(1)
 
 
 def _cmd_transcribe(args):

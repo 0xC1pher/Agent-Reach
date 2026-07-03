@@ -40,6 +40,11 @@ PROVIDERS = {
         "model": "whisper-1",
         "key_field": "openai_api_key",
     },
+    "fcc": {
+        "endpoint": None,  # resolved at runtime from config fcc_proxy_url
+        "model": "whisper-large-v3",
+        "key_field": "fcc_proxy_token",
+    },
 }
 
 
@@ -221,14 +226,27 @@ def transcribe_chunk(
     if provider not in PROVIDERS:
         raise TranscribeError(f"unknown provider: {provider}")
     cfg = config or Config()
-    key = _provider_key(provider, cfg)
-    if not key:
-        raise NoProviderConfigured(
-            f"{provider}: missing {PROVIDERS[provider]['key_field']} "
-            f"(configure with `agent-reach configure {provider}-key ...`)"
-        )
 
-    info = PROVIDERS[provider]
+    # FCC proxy resolves endpoint from config at runtime
+    if provider == "fcc":
+        proxy_url = cfg.get("fcc_proxy_url")
+        if not proxy_url:
+            raise NoProviderConfigured(
+                "fcc: missing fcc_proxy_url "
+                "(configure with `agent-reach configure fcc-proxy http://localhost:8082`)"
+            )
+        endpoint = f"{proxy_url.rstrip('/')}/v1/audio/transcriptions"
+        key = cfg.get("fcc_proxy_token") or "fcc-no-auth"
+        info = {"endpoint": endpoint, "model": PROVIDERS["fcc"]["model"], "key_field": "fcc_proxy_token"}
+    else:
+        key = _provider_key(provider, cfg)
+        if not key:
+            raise NoProviderConfigured(
+                f"{provider}: missing {PROVIDERS[provider]['key_field']} "
+                f"(configure with `agent-reach configure {provider}-key ...`)"
+            )
+        info = PROVIDERS[provider]
+
     with chunk.open("rb") as fh:
         try:
             resp = requests.post(
@@ -248,10 +266,10 @@ def transcribe_chunk(
 
 def _provider_order(provider: str) -> List[str]:
     if provider == "auto":
-        return ["groq", "openai"]
+        return ["fcc", "groq", "openai"]
     if provider in PROVIDERS:
         return [provider]
-    raise TranscribeError(f"unknown provider: {provider} (use groq|openai|auto)")
+    raise TranscribeError(f"unknown provider: {provider} (use fcc|groq|openai|auto)")
 
 
 def transcribe(

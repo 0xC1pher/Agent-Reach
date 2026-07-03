@@ -67,6 +67,14 @@ class TestDoctor:
                 "backends": ["Exa"],
                 "active_backend": None,
             },
+            "fcc_proxy": {
+                "status": "off",
+                "name": "Free Claude Code (transcripción)",
+                "message": "Proxy no configurado. Configurar con: agent-reach configure fcc-proxy http://localhost:8082",
+                "tier": 1,
+                "backends": ["fcc"],
+                "active_backend": None,
+            },
         }
 
     def test_format_report(self):

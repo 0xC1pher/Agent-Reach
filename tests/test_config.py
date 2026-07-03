@@ -7,9 +7,15 @@ from agent_reach.config import Config
 
 
 @pytest.fixture
-def tmp_config(tmp_path):
+def tmp_config(tmp_path, monkeypatch):
     """Create a Config with a temporary directory."""
     config_file = tmp_path / "config.yaml"
+    # Isolate from env vars — tests must not leak real API keys
+    for key in [
+        "GROQ_API_KEY", "OPENAI_API_KEY", "FCC_PROXY_URL", "FCC_PROXY_TOKEN",
+        "KITTENTTS_MODEL", "GITHUB_TOKEN",
+    ]:
+        monkeypatch.delenv(key, raising=False)
     return Config(config_path=config_file)
 
 
