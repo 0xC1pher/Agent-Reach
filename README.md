@@ -1,5 +1,7 @@
 <h1 align="center">👁️ Agent Reach</h1>
 
+> **Fork basado en [Panniantong/Agent-Reach](https://github.com/Panniantong/Agent-Reach)** — Créditos al creador original. Licencia MIT.
+
 <p align="center">
   <strong>Dale a tu AI Agent capacidades de internet con un solo comando</strong>
 </p>
