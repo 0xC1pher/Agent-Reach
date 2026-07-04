@@ -32,7 +32,7 @@ class KatyLLM:
     
     PROVIDERS = {
         "local_gemma": {
-            "model": "unsloth/gemma-3n-E2B-it-4bit",
+            "model": "Qwen/Qwen2.5-0.5B-Instruct",  # ~1GB, fits in RAM
             "key_field": None,
         },
     }
@@ -62,32 +62,34 @@ class KatyLLM:
         return prompt
     
     def _call_local_gemma(self, messages: list, max_tokens: int = 512) -> Optional[LLMResponse]:
-        """Call local Gemma model."""
+        """Call local Gemma model for chat."""
         try:
             import torch
-            from transformers import AutoProcessor, Gemma3nForConditionalGeneration
+            from transformers import AutoTokenizer, AutoModelForCausalLM
             
-            from agent_reach.channels.katy import KatyChannel
-            ch = KatyChannel()
+            model_name = self.PROVIDERS["local_gemma"]["model"]
             
-            model_name = ch.STT_MODEL_4BIT if self.config.get("katy_4bit", "true").lower() == "true" else ch.STT_MODEL
+            print(f"[Katy LLM] Cargando {model_name}...")
             
             device = "cuda" if torch.cuda.is_available() else "cpu"
             dtype = torch.float16 if device == "cuda" else torch.float32
             
-            processor = AutoProcessor.from_pretrained(model_name)
-            model = Gemma3nForConditionalGeneration.from_pretrained(
+            tokenizer = AutoTokenizer.from_pretrained(model_name)
+            model = AutoModelForCausalLM.from_pretrained(
                 model_name,
-                torch_dtype=dtype,
+                dtype=dtype,
                 device_map=device,
+                low_cpu_mem_usage=True,
             )
             
             # Apply chat template
-            inputs = processor.apply_chat_template(
+            input_text = tokenizer.apply_chat_template(
                 messages,
-                tokenize=True,
-                return_dict=True,
-            ).to(device)
+                tokenize=False,
+                add_generation_prompt=True,
+            )
+            
+            inputs = tokenizer(input_text, return_tensors="pt").to(device)
             
             # Generate
             with torch.no_grad():
@@ -99,20 +101,20 @@ class KatyLLM:
                 )
             
             # Decode only new tokens
-            text = processor.decode(
+            response = tokenizer.decode(
                 output[0][inputs["input_ids"].shape[1]:],
                 skip_special_tokens=True
             )
             
             # Cleanup
-            del model, processor
+            del model, tokenizer
             if device == "cuda":
                 torch.cuda.empty_cache()
             
             return LLMResponse(
-                text=text.strip(),
+                text=response.strip(),
                 model=model_name,
-                tokens_used=0,  # Can't track local tokens
+                tokens_used=0,
                 provider="local_gemma",
             )
             

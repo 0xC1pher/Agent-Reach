@@ -22,13 +22,12 @@ from .base import Channel
 
 class KatyChannel(Channel):
     name = "katy"
-    description = "Katy — asistente de voz local (Gemma 3n + KittenTTS)"
+    description = "Katy — asistente de voz local (Whisper + Gemma 2B + KittenTTS)"
     backends = ["katy"]
     tier = 2  # needs pip install + model download
 
     # Model config
-    STT_MODEL = "unsloth/gemma-3n-E2B-it"  # 2B effective params, ~4GB
-    STT_MODEL_4BIT = "unsloth/gemma-3n-E2B-it-unsloth-bnb-4bit"  # 4-bit quantized
+    STT_MODEL = "base"  # Whisper model (small, fast on CPU)
     TTS_VOICE = "expr-voice-2-m"
     TTS_SPEED = 1.0
 
@@ -69,32 +68,7 @@ class KatyChannel(Channel):
             return "error", "espeak-ng no instalado. Instalar: choco install espeak-ng"
 
         self.active_backend = self.backends[0]
-        return "ok", "Katy disponible (Gemma 3n + KittenTTS)"
-
-    def _load_stt_model(self, config=None):
-        """Load Gemma 3n model for speech understanding."""
-        import torch
-        from transformers import AutoProcessor, Gemma3nForConditionalGeneration
-
-        from agent_reach.config import Config
-        cfg = config or Config()
-
-        use_4bit = cfg.get("katy_4bit", "true").lower() == "true"
-        model_name = self.STT_MODEL_4BIT if use_4bit else self.STT_MODEL
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        dtype = torch.float16 if device == "cuda" else torch.float32
-
-        print(f"[Katy] Cargando modelo {model_name} en {device}...")
-
-        processor = AutoProcessor.from_pretrained(model_name)
-        model = Gemma3nForConditionalGeneration.from_pretrained(
-            model_name,
-            torch_dtype=dtype,
-            device_map=device,
-        )
-
-        return model, processor, device
+        return "ok", "Katy disponible (Whisper + Gemma 2B + KittenTTS)"
 
     def _load_tts_model(self):
         """Load KittenTTS model."""
@@ -102,50 +76,16 @@ class KatyChannel(Channel):
         return KittenTTS()
 
     def listen(self, audio_path: str, config=None) -> str:
-        """Understand spoken audio via Gemma 3n. Returns text response."""
-        import torch
-        import soundfile as sf
-        import numpy as np
+        """Transcribe spoken audio via Whisper. Returns text."""
+        import whisper
 
-        model, processor, device = self._load_stt_model(config)
+        print(f"[Katy] Cargando modelo Whisper {self.STT_MODEL}...")
+        model = whisper.load_model(self.STT_MODEL)
 
-        # Load audio
-        audio, sr = sf.read(audio_path)
-        if sr != 16000:
-            # Resample to 16kHz
-            import librosa
-            audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
+        print("[Katy] Transcribiendo audio...")
+        result = model.transcribe(audio_path, language="es", fp16=False)
 
-        # Prepare input
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "audio", "audio": audio.tolist()},
-                    {"type": "text", "text": "Transcribe this audio accurately. If it's a question, answer it."}
-                ]
-            }
-        ]
-
-        inputs = processor.apply_chat_template(
-            messages,
-            tokenize=True,
-            return_dict=True,
-        ).to(device)
-
-        # Generate
-        with torch.no_grad():
-            output = model.generate(**inputs, max_new_tokens=256)
-
-        # Decode only the new tokens
-        response = processor.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-
-        # Cleanup
-        del model, processor
-        if device == "cuda":
-            torch.cuda.empty_cache()
-
-        return response.strip()
+        return result["text"].strip()
 
     def speak(self, text: str, output_path: Optional[str] = None, config=None) -> str:
         """Generate voice from text via KittenTTS. Returns audio path."""
