@@ -5,6 +5,13 @@ name: Katy
 version: "1.0"
 description: "Asistente de voz local inspirado en Jarvis"
 
+# Ubicación por defecto
+location:
+  city: "El Tigre"
+  state: "Anzoátegui"
+  country: "Venezuela"
+  coords: [8.0, -63.5]  # Lat, Lon
+
 # Personalidad
 personality:
   greeting: "¡Hola! Soy Katy, tu asistente de voz. ¿En qué te puedo ayudar?"

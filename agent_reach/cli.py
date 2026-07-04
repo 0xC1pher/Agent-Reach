@@ -159,6 +159,9 @@ def main():
     katy_alerts.add_argument("--location", help="Establecer ubicación para clima")
     katy_alerts.add_argument("--add-topic", help="Agregar tema de noticias")
     katy_alerts.add_argument("--remove-topic", help="Remover tema de noticias")
+    katy_alerts.add_argument("--set-coords", nargs=2, type=float, metavar=("LAT", "LON"), help="Establecer coordenadas para sismos")
+    katy_alerts.add_argument("--min-magnitude", type=float, help="Magnitud mínima para alertas de sismo")
+    katy_alerts.add_argument("--radius", type=int, help="Radio en km para buscar sismos")
 
     # ── check-update ──
     # ── transcribe ──
@@ -1385,6 +1388,21 @@ def _cmd_katy(args):
         elif args.location:
             alerts.set_location(args.location)
         
+        elif args.set_coords:
+            alerts.coords = tuple(args.set_coords)
+            alerts._save_config()
+            print(f"[Katy] Coordenadas actualizadas: {args.set_coords}")
+        
+        elif args.min_magnitude:
+            alerts.earthquake_min_magnitude = args.min_magnitude
+            alerts._save_config()
+            print(f"[Katy] Magnitud mínima: {args.min_magnitude}")
+        
+        elif args.radius:
+            alerts.earthquake_radius_km = args.radius
+            alerts._save_config()
+            print(f"[Katy] Radio de búsqueda: {args.radius}km")
+        
         elif args.add_topic:
             alerts.add_news_topic(args.add_topic)
         
@@ -1395,7 +1413,9 @@ def _cmd_katy(args):
             # Show status
             print("[Katy] Alertas proactivas:")
             print(f"  Estado: {'Activas' if alerts.running else 'Inactivas'}")
-            print(f"  Ubicación: {alerts.location or 'No configurada'}")
+            print(f"  Ubicación: {alerts.location}")
+            print(f"  Coordenadas: {alerts.coords}")
+            print(f"  Sismos: radio {alerts.earthquake_radius_km}km, min mag {alerts.earthquake_min_magnitude}")
             print(f"  Temas: {', '.join(alerts.news_topics) if alerts.news_topics else 'Ninguno'}")
             print(f"  Intervalo: {alerts.check_interval//60} minutos")
             print(f"  Última verificación: {alerts.last_check or 'Nunca'}")
