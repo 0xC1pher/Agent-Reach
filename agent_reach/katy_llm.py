@@ -31,20 +31,9 @@ class KatyLLM:
     """
     
     PROVIDERS = {
-        "openrouter": {
-            "endpoint": "https://openrouter.ai/api/v1/chat/completions",
-            "model": "meta-llama/llama-3.3-70b-instruct:free",  # Free tier
-            "key_field": "openrouter_api_key",
-        },
-        "groq": {
-            "endpoint": "https://api.groq.com/openai/v1/chat/completions",
-            "model": "llama-3.3-70b-versatile",
-            "key_field": "groq_api_key",
-        },
-        "openai": {
-            "endpoint": "https://api.openai.com/v1/chat/completions",
-            "model": "gpt-4o-mini",
-            "key_field": "openai_api_key",
+        "local_gemma": {
+            "model": "unsloth/gemma-3n-E2B-it-4bit",
+            "key_field": None,
         },
     }
     
@@ -71,150 +60,6 @@ class KatyLLM:
             prompt += f"\n\n{context}"
         
         return prompt
-    
-    def _get_api_key(self, provider: str) -> Optional[str]:
-        """Get API key for provider."""
-        key_field = self.PROVIDERS[provider]["key_field"]
-        
-        # Try config file first
-        key = self.config.get(key_field)
-        if key:
-            return key
-        
-        # Try environment variable
-        import os
-        env_map = {
-            "openrouter_api_key": "OPENROUTER_API_KEY",
-            "groq_api_key": "GROQ_API_KEY",
-            "openai_api_key": "OPENAI_API_KEY",
-        }
-        env_var = env_map.get(key_field)
-        if env_var:
-            return os.environ.get(env_var)
-        
-        return None
-    
-    def _call_openrouter(self, messages: list, max_tokens: int = 512) -> Optional[LLMResponse]:
-        """Call OpenRouter API."""
-        api_key = self._get_api_key("openrouter")
-        if not api_key:
-            return None
-        
-        provider_config = self.PROVIDERS["openrouter"]
-        
-        try:
-            response = requests.post(
-                provider_config["endpoint"],
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                    "HTTP-Referer": "https://agent-reach.com",
-                    "X-Title": "Katy Voice Assistant",
-                },
-                json={
-                    "model": provider_config["model"],
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "temperature": 0.7,
-                },
-                timeout=15,
-            )
-            response.raise_for_status()
-            
-            data = response.json()
-            text = data["choices"][0]["message"]["content"]
-            tokens = data.get("usage", {}).get("total_tokens", 0)
-            
-            return LLMResponse(
-                text=text,
-                model=provider_config["model"],
-                tokens_used=tokens,
-                provider="openrouter",
-            )
-            
-        except Exception as e:
-            print(f"[Katy LLM] OpenRouter error: {e}")
-            return None
-    
-    def _call_groq(self, messages: list, max_tokens: int = 512) -> Optional[LLMResponse]:
-        """Call Groq API."""
-        api_key = self._get_api_key("groq")
-        if not api_key:
-            return None
-        
-        provider_config = self.PROVIDERS["groq"]
-        
-        try:
-            response = requests.post(
-                provider_config["endpoint"],
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": provider_config["model"],
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "temperature": 0.7,
-                },
-                timeout=10,
-            )
-            response.raise_for_status()
-            
-            data = response.json()
-            text = data["choices"][0]["message"]["content"]
-            tokens = data.get("usage", {}).get("total_tokens", 0)
-            
-            return LLMResponse(
-                text=text,
-                model=provider_config["model"],
-                tokens_used=tokens,
-                provider="groq",
-            )
-            
-        except Exception as e:
-            print(f"[Katy LLM] Groq error: {e}")
-            return None
-    
-    def _call_openai(self, messages: list, max_tokens: int = 512) -> Optional[LLMResponse]:
-        """Call OpenAI API."""
-        api_key = self._get_api_key("openai")
-        if not api_key:
-            return None
-        
-        provider_config = self.PROVIDERS["openai"]
-        
-        try:
-            response = requests.post(
-                provider_config["endpoint"],
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": provider_config["model"],
-                    "messages": messages,
-                    "max_tokens": max_tokens,
-                    "temperature": 0.7,
-                },
-                timeout=10,
-            )
-            response.raise_for_status()
-            
-            data = response.json()
-            text = data["choices"][0]["message"]["content"]
-            tokens = data.get("usage", {}).get("total_tokens", 0)
-            
-            return LLMResponse(
-                text=text,
-                model=provider_config["model"],
-                tokens_used=tokens,
-                provider="openai",
-            )
-            
-        except Exception as e:
-            print(f"[Katy LLM] OpenAI error: {e}")
-            return None
     
     def _call_local_gemma(self, messages: list, max_tokens: int = 512) -> Optional[LLMResponse]:
         """Call local Gemma model."""
@@ -276,36 +121,16 @@ class KatyLLM:
             return None
     
     def chat(self, user_input: str, max_tokens: int = 512) -> Optional[LLMResponse]:
-        """Generate chat response.
-        
-        Tries providers in order: OpenRouter → Groq → OpenAI → Local Gemma
-        """
+        """Generate chat response using local Gemma model."""
         messages = [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": user_input},
         ]
         
-        # Try OpenRouter first (free tier)
-        response = self._call_openrouter(messages, max_tokens)
-        if response:
-            return response
-        
-        # Try Groq
-        response = self._call_groq(messages, max_tokens)
-        if response:
-            return response
-        
-        # Try OpenAI
-        response = self._call_openai(messages, max_tokens)
-        if response:
-            return response
-        
-        # Fallback to local Gemma
         response = self._call_local_gemma(messages, max_tokens)
         if response:
             return response
         
-        # All failed
         return LLMResponse(
             text="Lo siento, no puedo procesar tu solicitud ahora mismo.",
             model="none",
@@ -316,10 +141,7 @@ class KatyLLM:
     def is_available(self) -> dict:
         """Check which providers are available."""
         return {
-            "openrouter": self._get_api_key("openrouter") is not None,
-            "groq": self._get_api_key("groq") is not None,
-            "openai": self._get_api_key("openai") is not None,
-            "local_gemma": True,  # Always available as fallback
+            "local_gemma": True,  # Always available
         }
 
 
