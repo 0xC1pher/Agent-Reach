@@ -150,6 +150,15 @@ def main():
     katy_memory.add_argument("--clear", action="store_true", help="Limpiar memoria")
     katy_name = katy_sub.add_parser("name", help="Establecer nombre del usuario")
     katy_name.add_argument("name", nargs="?", help="Nombre del usuario")
+    katy_continuous = katy_sub.add_parser("continuous", help="Escucha continua con wake word")
+    katy_continuous.add_argument("--stop", action="store_true", help="Detener escucha continua")
+    katy_alerts = katy_sub.add_parser("alerts", help="Alertas proactivas (clima, noticias)")
+    katy_alerts.add_argument("--start", action="store_true", help="Iniciar alertas proactivas")
+    katy_alerts.add_argument("--stop", action="store_true", help="Detener alertas")
+    katy_alerts.add_argument("--check", action="store_true", help="Verificar ahora")
+    katy_alerts.add_argument("--location", help="Establecer ubicación para clima")
+    katy_alerts.add_argument("--add-topic", help="Agregar tema de noticias")
+    katy_alerts.add_argument("--remove-topic", help="Remover tema de noticias")
 
     # ── check-update ──
     # ── transcribe ──
@@ -1311,8 +1320,88 @@ def _cmd_katy(args):
             name = skill.get_user_name()
             print(f"[Katy] Nombre: {name or 'No recordado'}")
 
+    elif args.katy_action == "continuous":
+        # Continuous listening with wake word
+        from agent_reach.katy_listener import get_listener
+        
+        listener = get_listener()
+        
+        if args.stop:
+            listener.stop_listening()
+            print("[Katy] Escucha continua detenida.")
+        else:
+            def on_wake(text, audio):
+                print(f"\n[Katy] ¡Desperté! {text}")
+                # Process the wake command
+                response = ch._generate_response(text, skill)
+                skill.add_conversation_turn(text, response)
+                print(f"[Katy] {response}")
+                # Speak response
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                    response_audio = f.name
+                ch.speak(response, response_audio)
+                print(f"[Katy] Audio: {response_audio}")
+            
+            listener.on_wake = on_wake
+            if listener.start_listening():
+                print("[Katy] Escucha continua iniciada. Di 'Hey Katy' para activar.")
+                print("[Katy] Presiona Ctrl+C para detener.")
+                try:
+                    while listener.listening:
+                        import time
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    listener.stop_listening()
+            else:
+                print("[Katy] No se pudo iniciar escucha continua.")
+
+    elif args.katy_action == "alerts":
+        # Proactive alerts
+        from agent_reach.katy_alerts import get_alerts
+        
+        alerts = get_alerts()
+        
+        if args.start:
+            def on_alert(alert):
+                print(f"\n[Katy Alerta] {alert.message}")
+                # Speak alert
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                    alert_audio = f.name
+                ch.speak(alert.message, alert_audio)
+                print(f"[Katy Alerta] Audio: {alert_audio}")
+            
+            alerts.start(on_alert)
+            print("[Katy] Alertas proactivas iniciadas.")
+        
+        elif args.stop:
+            alerts.stop()
+            print("[Katy] Alertas proactivas detenidas.")
+        
+        elif args.check:
+            alerts.check_now()
+        
+        elif args.location:
+            alerts.set_location(args.location)
+        
+        elif args.add_topic:
+            alerts.add_news_topic(args.add_topic)
+        
+        elif args.remove_topic:
+            alerts.remove_news_topic(args.remove_topic)
+        
+        else:
+            # Show status
+            print("[Katy] Alertas proactivas:")
+            print(f"  Estado: {'Activas' if alerts.running else 'Inactivas'}")
+            print(f"  Ubicación: {alerts.location or 'No configurada'}")
+            print(f"  Temas: {', '.join(alerts.news_topics) if alerts.news_topics else 'Ninguno'}")
+            print(f"  Intervalo: {alerts.check_interval//60} minutos")
+            print(f"  Última verificación: {alerts.last_check or 'Nunca'}")
+
     else:
-        print("Uso: agent-reach katy [listen|speak|chat|personality|permissions|memory|name]")
+        print("Uso: agent-reach katy [listen|speak|chat|personality|permissions|memory|name|continuous|alerts]")
         sys.exit(1)
 
 
