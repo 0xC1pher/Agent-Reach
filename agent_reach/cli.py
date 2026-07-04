@@ -141,7 +141,15 @@ def main():
     katy_speak = katy_sub.add_parser("speak", help="Generar voz desde texto")
     katy_speak.add_argument("text", help="Texto para synthesizar")
     katy_speak.add_argument("-o", "--output", default=None, help="Archivo de salida")
-    katy_chat = katy_sub.add_parser("chat", help="Chat de voz interactivo")
+    katy_chat = katy_sub.add_parser("chat", help="Chat de voz interactivo con personalidad")
+    katy_personality = katy_sub.add_parser("personality", help="Ver/modificar personalidad de Katy")
+    katy_personality.add_argument("--set-key", help="Clave de personalidad a modificar")
+    katy_personality.add_argument("--set-value", help="Nuevo valor")
+    katy_permissions = katy_sub.add_parser("permissions", help="Ver permisos de Katy")
+    katy_memory = katy_sub.add_parser("memory", help="Ver/limpiar memoria de conversación")
+    katy_memory.add_argument("--clear", action="store_true", help="Limpiar memoria")
+    katy_name = katy_sub.add_parser("name", help="Establecer nombre del usuario")
+    katy_name.add_argument("name", nargs="?", help="Nombre del usuario")
 
     # ── check-update ──
     # ── transcribe ──
@@ -1197,6 +1205,7 @@ def _cmd_katy(args):
 
     from agent_reach.channels.katy import KatyChannel
     from agent_reach.config import Config
+    from agent_reach.katy_skill import get_katy_skill
 
     # Set espeak library path
     espeak_dll = r"C:\Program Files\eSpeak NG\libespeak-ng.dll"
@@ -1208,6 +1217,8 @@ def _cmd_katy(args):
     if status != "ok":
         print(f"❌ {msg}")
         sys.exit(1)
+
+    skill = get_katy_skill()
 
     if args.katy_action == "listen":
         text = ch.listen(args.audio)
@@ -1222,29 +1233,86 @@ def _cmd_katy(args):
         print(f"[Katy] Audio generado: {result}")
 
     elif args.katy_action == "chat":
+        print(f"[Katy] {skill.get_greeting()}")
         print("[Katy] Modo chat de voz. Di algo (o escribe 'salir' para terminar)")
         while True:
             try:
                 user_input = input("\n[Tú] > ").strip()
                 if user_input.lower() in ("salir", "exit", "quit"):
-                    print("[Katy] ¡Hasta luego!")
+                    print(f"[Katy] {skill.config['personality']['farewell']}")
                     break
 
                 if user_input:
-                    # Text input → speak response
+                    # Check permissions
+                    allowed, reason = skill.can_do("search")
+                    if not allowed:
+                        print(f"[Katy] {reason}")
+                        continue
+                    
+                    # Generate response with personality
+                    response = ch._generate_response(user_input, skill)
+                    skill.add_conversation_turn(user_input, response)
+                    response = skill.format_response(response)
+                    
+                    # Speak response
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                         response_audio = f.name
-                    ch.speak(f"Entendí: {user_input}", response_audio)
+                    ch.speak(response, response_audio)
+                    print(f"[Katy] {response}")
                     print(f"[Katy] Audio: {response_audio}")
 
             except KeyboardInterrupt:
-                print("\n[Katy] ¡Hasta luego!")
+                print(f"\n[Katy] {skill.config['personality']['farewell']}")
                 break
             except EOFError:
                 break
 
+    elif args.katy_action == "personality":
+        # Show/update personality
+        if args.set_key and args.set_value:
+            skill.config["personality"][args.set_key] = args.set_value
+            print(f"[Katy] Personalidad actualizada: {args.set_key} = {args.set_value}")
+        else:
+            print("[Katy] Personalidad actual:")
+            for k, v in skill.config.get("personality", {}).items():
+                if k != "rules":
+                    print(f"  {k}: {v}")
+
+    elif args.katy_action == "permissions":
+        # Show permissions
+        perms = skill.config.get("permissions", {})
+        print("[Katy] Permisos:")
+        print(f"  Permitidos: {', '.join(perms.get('allowed', []))}")
+        print(f"  Requieren confirmación: {', '.join(perms.get('confirm', []))}")
+        print(f"  Prohibidos: {', '.join(perms.get('denied', []))}")
+
+    elif args.katy_action == "memory":
+        # Show/clear memory
+        if args.clear:
+            skill.memory = {"turns": [], "user_name": None, "preferences": {}}
+            skill._save_memory()
+            print("[Katy] Memoria limpiada.")
+        else:
+            print("[Katy] Memoria:")
+            print(f"  Nombre de usuario: {skill.get_user_name() or 'No recordado'}")
+            print(f"  Turnos en historial: {len(skill.memory.get('turns', []))}")
+            if skill.memory.get("turns"):
+                print("  Últimos turnos:")
+                for turn in skill.memory["turns"][-3:]:
+                    print(f"    Tú: {turn['user'][:50]}...")
+                    print(f"    Katy: {turn['katy'][:50]}...")
+
+    elif args.katy_action == "name":
+        # Set user name
+        if args.name:
+            skill.set_user_name(args.name)
+            print(f"[Katy] ¡Hola {args.name}! Te recordaré.")
+        else:
+            name = skill.get_user_name()
+            print(f"[Katy] Nombre: {name or 'No recordado'}")
+
     else:
-        print("Uso: agent-reach katy [listen|speak|chat]")
+        print("Uso: agent-reach katy [listen|speak|chat|personality|permissions|memory|name]")
         sys.exit(1)
 
 

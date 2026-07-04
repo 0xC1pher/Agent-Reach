@@ -173,16 +173,116 @@ class KatyChannel(Channel):
     def chat_turn(self, audio_path: str, config=None) -> tuple[str, str]:
         """Process one voice turn: listen → think → speak.
         Returns (understood_text, response_audio_path)."""
+        from agent_reach.katy_skill import get_katy_skill
+        
+        skill = get_katy_skill()
+        
         # 1. Understand audio
         understood = self.listen(audio_path, config)
-
-        # 2. Generate response (for now, echo back — will integrate with AI later)
-        response_text = f"Entendí: {understood}"
-
-        # 3. Speak response
+        
+        # 2. Check wake word (if enabled)
+        if not skill.check_wake_word(understood):
+            # Not addressed to Katy — ignore
+            return understood, None
+        
+        # 3. Check permissions
+        # For now, all voice commands are treated as "search" or "chat"
+        action = "search"  # Default action
+        allowed, reason = skill.can_do(action)
+        
+        if not allowed:
+            response_text = reason
+        else:
+            # 4. Generate response using LLM with personality
+            response_text = self._generate_response(understood, skill, config)
+        
+        # 5. Add to conversation memory
+        skill.add_conversation_turn(understood, response_text)
+        
+        # 6. Format response according to personality
+        response_text = skill.format_response(response_text)
+        
+        # 7. Speak response
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             response_audio = f.name
-
+        
         self.speak(response_text, response_audio, config)
-
+        
         return understood, response_audio
+    
+    def _generate_response(self, user_input: str, skill, config=None) -> str:
+        """Generate response using LLM with Katy's personality."""
+        from agent_reach.config import Config
+        
+        cfg = config or Config()
+        
+        # Build messages with personality and context
+        system_prompt = skill.get_system_prompt()
+        conversation_context = skill.get_conversation_context()
+        
+        # Add user name if known
+        user_name = skill.get_user_name()
+        if user_name:
+            system_prompt += f"\n\nEl usuario se llama {user_name}."
+        
+        # Add conversation context
+        if conversation_context:
+            system_prompt += f"\n\n{conversation_context}"
+        
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_input},
+        ]
+        
+        # Use Gemma 3n for response generation
+        try:
+            import torch
+            from transformers import AutoProcessor, Gemma3nForConditionalGeneration
+            
+            model_name = self.STT_MODEL_4BIT if cfg.get("katy_4bit", "true").lower() == "true" else self.STT_MODEL
+            
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            dtype = torch.float16 if device == "cuda" else torch.float32
+            
+            processor = AutoProcessor.from_pretrained(model_name)
+            model = Gemma3nForConditionalGeneration.from_pretrained(
+                model_name,
+                torch_dtype=dtype,
+                device_map=device,
+            )
+            
+            # Apply chat template
+            inputs = processor.apply_chat_template(
+                messages,
+                tokenize=True,
+                return_dict=True,
+            ).to(device)
+            
+            # Generate response
+            max_tokens = skill.config.get("llm", {}).get("max_tokens", 512)
+            temperature = skill.config.get("llm", {}).get("temperature", 0.7)
+            
+            with torch.no_grad():
+                output = model.generate(
+                    **inputs,
+                    max_new_tokens=max_tokens,
+                    temperature=temperature,
+                    do_sample=True,
+                )
+            
+            # Decode only new tokens
+            response = processor.decode(
+                output[0][inputs["input_ids"].shape[1]:],
+                skip_special_tokens=True
+            )
+            
+            # Cleanup
+            del model, processor
+            if device == "cuda":
+                torch.cuda.empty_cache()
+            
+            return response.strip()
+            
+        except Exception as e:
+            # Fallback to simple response
+            return f"Tuve un problema al procesar tu solicitud: {str(e)}"
