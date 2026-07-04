@@ -47,17 +47,22 @@ class KatyLLM:
         from agent_reach.katy_skill import get_katy_skill
         skill = get_katy_skill()
         
-        prompt = skill.get_system_prompt()
+        # Base prompt - FORCED Spanish
+        prompt = (
+            "IMPORTANTE: Responde SOLO en español. NUNCA en inglés. "
+            "Eres Katy, una asistente de voz femenina y amigable. "
+            "Responde de forma breve y natural, como en una conversación por voz. "
+        )
         
         # Add user name if known
         user_name = skill.get_user_name()
         if user_name:
-            prompt += f"\n\nEl usuario se llama {user_name}."
+            prompt += f"El usuario se llama {user_name}. "
         
         # Add conversation context
         context = skill.get_conversation_context()
         if context:
-            prompt += f"\n\n{context}"
+            prompt += f"Contexto: {context} "
         
         return prompt
     
@@ -126,7 +131,8 @@ class KatyLLM:
         """Generate chat response using local Gemma model."""
         messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": user_input},
+            {"role": "user", "content": f"[Hablando en español] {user_input}"},
+            {"role": "assistant", "content": "¡Hola! "},
         ]
         
         response = self._call_local_gemma(messages, max_tokens)

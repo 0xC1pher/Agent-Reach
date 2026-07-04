@@ -27,8 +27,8 @@ class KatyChannel(Channel):
     tier = 2  # needs pip install + model download
 
     # Model config
-    STT_MODEL = "base"  # Whisper model (small, fast on CPU)
-    TTS_VOICE = "expr-voice-2-m"
+    STT_MODEL = "small"  # Whisper small - better accuracy
+    TTS_VOICE = "expr-voice-2-f"  # Female voice
     TTS_SPEED = 1.0
 
     def can_handle(self, url: str) -> bool:
@@ -83,7 +83,13 @@ class KatyChannel(Channel):
         model = whisper.load_model(self.STT_MODEL)
 
         print("[Katy] Transcribiendo audio...")
-        result = model.transcribe(audio_path, language="es", fp16=False)
+        result = model.transcribe(
+            audio_path,
+            language="es",
+            fp16=False,
+            no_speech_threshold=0.6,
+            condition_on_previous_text=False,
+        )
 
         return result["text"].strip()
 
@@ -109,6 +115,15 @@ class KatyChannel(Channel):
 
         ch = KittenTTSChannel()
         return ch.synthesize(text, output_path, config=cfg)
+
+    def play(self, audio_path: str):
+        """Play audio through speakers."""
+        import sounddevice as sd
+        import soundfile as sf
+
+        data, sr = sf.read(audio_path)
+        sd.play(data, sr)
+        sd.wait()
 
     def chat_turn(self, audio_path: str, config=None) -> tuple[str, str]:
         """Process one voice turn: listen → think → speak.

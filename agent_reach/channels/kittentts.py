@@ -73,6 +73,10 @@ class KittenTTSChannel(Channel):
             os.environ["PHONEMIZER_ESPEAK_LIBRARY"] = espeak_dll
 
         ktts = KittenTTS()
+        
+        # Force Spanish language for phonemizer
+        ktts._phonemizer._language = "es"
+        
         audio = ktts.generate(text, voice=voice, speed=speed)
         sf.write(output_path, audio, 22050)
 
