@@ -81,6 +81,13 @@ memory:
   remember_name: true  # Recordar nombre del usuario
   remember_preferences: true  # Recordar preferencias
   file: "~/.agent-reach/katy_memory.json"
+  
+  # Vault persistente (obsidian-mind)
+  vault:
+    enabled: true
+    path: "~/Desktop/obsidian-mind"  # Ruta al vault de obsidian-mind
+    auto_log: true  # Auto-registrar conversaciones en el vault
+    context_injection: true  # Inyectar contexto del vault en el LLM
 
 # Proactividad — cuándo hablar sin que pidan
 proactive:

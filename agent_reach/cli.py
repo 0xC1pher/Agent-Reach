@@ -162,6 +162,18 @@ def main():
     katy_alerts.add_argument("--set-coords", nargs=2, type=float, metavar=("LAT", "LON"), help="Establecer coordenadas para sismos")
     katy_alerts.add_argument("--min-magnitude", type=float, help="Magnitud mínima para alertas de sismo")
     katy_alerts.add_argument("--radius", type=int, help="Radio en km para buscar sismos")
+    
+    # ── katy memory vault ──
+    katy_vault = katy_sub.add_parser("vault", help="Memoria persistente (obsidian-mind vault)")
+    katy_vault.add_argument("--init", action="store_true", help="Inicializar vault de memoria")
+    katy_vault.add_argument("--status", action="store_true", help="Ver estado del vault")
+    katy_vault.add_argument("--search", help="Buscar en el vault")
+    katy_vault.add_argument("--north-star", action="store_true", help="Ver metas actuales")
+    katy_vault.add_argument("--set-focus", help="Actualizar foco actual")
+    katy_vault.add_argument("--add-decision", nargs=2, metavar=("DECISION", "CONTEXTO"), help="Agregar decisión")
+    katy_vault.add_argument("--add-pattern", nargs=2, metavar=("PATRON", "DESCRIPCION"), help="Agregar patrón")
+    katy_vault.add_argument("--add-gotcha", nargs=2, metavar=("PROBLEMA", "SOLUCION"), help="Agregar problema conocido")
+    katy_vault.add_argument("--stats", action="store_true", help="Ver estadísticas del vault")
 
     # ── check-update ──
     # ── transcribe ──
@@ -1419,9 +1431,106 @@ def _cmd_katy(args):
             print(f"  Temas: {', '.join(alerts.news_topics) if alerts.news_topics else 'Ninguno'}")
             print(f"  Intervalo: {alerts.check_interval//60} minutos")
             print(f"  Última verificación: {alerts.last_check or 'Nunca'}")
+    
+    elif args.katy_action == "vault":
+        # Vault memory commands
+        from agent_reach.katy_memory import get_katy_memory
+        
+        memory = get_katy_memory()
+        
+        if args.init:
+            # Initialize vault
+            vault_path = Path.home() / "obsidian-mind"
+            if vault_path.exists():
+                print(f"[Katy] Vault encontrado en: {vault_path}")
+                memory = get_katy_memory(str(vault_path))
+            else:
+                print("[Katy] No se encontró vault de obsidian-mind.")
+                print("[Katy] Clonando vault...")
+                import subprocess
+                result = subprocess.run(
+                    ["git", "clone", "https://github.com/breferrari/obsidian-mind.git", str(vault_path)],
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    print(f"[Katy] Vault clonado en: {vault_path}")
+                    memory = get_katy_memory(str(vault_path))
+                else:
+                    print(f"[Katy] Error al clonar: {result.stderr}")
+                    sys.exit(1)
+        
+        if not memory.is_available():
+            print("[Katy] Vault no disponible. Usa 'katy vault --init' para crear uno.")
+            sys.exit(1)
+        
+        if args.status:
+            status = memory.get_status()
+            print("[Katy] Estado del vault:")
+            print(f"  Ruta: {status['path']}")
+            print(f"  Notas brain: {status['brain_notes']}")
+            print(f"  Notas work: {status['work_notes']}")
+            print(f"  Total: {status['total_notes']}")
+        
+        elif args.search:
+            results = memory.search(args.search)
+            if results:
+                print(f"[Katy] Resultados para '{args.search}':")
+                for r in results:
+                    print(f"  [{r['source']}] {r['title']}")
+                    if r['excerpt']:
+                        print(f"    {r['excerpt'][:100]}...")
+            else:
+                print(f"[Katy] No se encontraron resultados para '{args.search}'")
+        
+        elif args.north_star:
+            content = memory.get_north_star()
+            if content:
+                print("[Katy] North Star:")
+                print(content)
+            else:
+                print("[Katy] North Star no disponible.")
+        
+        elif args.set_focus:
+            memory.update_north_star(args.set_focus)
+            print(f"[Katy] Foco actualizado: {args.set_focus}")
+        
+        elif args.add_decision:
+            decision, context = args.add_decision
+            memory.add_decision(decision, context)
+            print(f"[Katy] Decisión registrada: {decision}")
+        
+        elif args.add_pattern:
+            pattern, description = args.add_pattern
+            memory.add_pattern(pattern, description)
+            print(f"[Katy] Patrón registrado: {pattern}")
+        
+        elif args.add_gotcha:
+            issue, solution = args.add_gotcha
+            memory.add_gotcha(issue, solution)
+            print(f"[Katy] Problema registrado: {issue}")
+        
+        elif args.stats:
+            stats = memory.get_stats()
+            print("[Katy] Estadísticas del vault:")
+            print(f"  Ruta: {stats.get('vault_path', 'N/A')}")
+            print(f"  Notas brain: {stats.get('brain_notes', 0)}")
+            print(f"  Brain con contenido: {stats.get('brain_with_content', 0)}")
+            print(f"  Work activo: {stats.get('work_active', 0)}")
+            print(f"  Work archivado: {stats.get('work_archived', 0)}")
+            print(f"  Total: {stats.get('total_notes', 0)}")
+        
+        else:
+            # Show vault info
+            status = memory.get_status()
+            print("[Katy] Vault de memoria persistente:")
+            print(f"  Estado: {'Activo' if status['available'] else 'No disponible'}")
+            if status['available']:
+                print(f"  Ruta: {status['path']}")
+                print(f"  Notas: {status['total_notes']}")
+            print("\nUso: agent-reach katy vault [--init|--status|--search|--north-star|--set-focus|--stats]")
 
     else:
-        print("Uso: agent-reach katy [listen|speak|chat|personality|permissions|memory|name|continuous|alerts]")
+        print("Uso: agent-reach katy [listen|speak|chat|personality|permissions|memory|name|continuous|alerts|vault]")
         sys.exit(1)
 
 

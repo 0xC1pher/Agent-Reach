@@ -12,6 +12,8 @@ from typing import Any, Optional
 
 import yaml
 
+from agent_reach.katy_memory import KatyMemory, get_katy_memory
+
 
 class KatySkill:
     """Manages Katy's personality, permissions, and behavior."""
@@ -20,9 +22,15 @@ class KatySkill:
     MEMORY_DIR = Path.home() / ".agent-reach"
     MEMORY_FILE = MEMORY_DIR / "katy_memory.json"
     
-    def __init__(self):
+    def __init__(self, vault_path: Optional[str] = None):
         self.config = self._load_config()
         self.memory = self._load_memory()
+        
+        # Get vault path from config if not provided
+        if vault_path is None:
+            vault_path = self.config.get("memory", {}).get("vault", {}).get("path", None)
+        
+        self.vault_memory = get_katy_memory(vault_path)
         
     def _load_config(self) -> dict:
         """Load katy.yaml config."""
@@ -78,7 +86,29 @@ class KatySkill:
     
     def get_system_prompt(self) -> str:
         """Get the system prompt for the LLM."""
-        return self.config.get("llm", {}).get("system_prompt", "")
+        base_prompt = self.config.get("llm", {}).get("system_prompt", "")
+        
+        # Add vault context if available
+        if self.vault_memory.is_available():
+            north_star = self.vault_memory.get_north_star()
+            if north_star:
+                # Extract current focus from North Star
+                lines = north_star.split("\n")
+                focus_section = []
+                in_focus = False
+                for line in lines:
+                    if "## Current Focus" in line or "## Foco Actual" in line:
+                        in_focus = True
+                        continue
+                    if in_focus and line.startswith("##"):
+                        break
+                    if in_focus and line.strip() and not line.startswith("_"):
+                        focus_section.append(line.strip())
+                
+                if focus_section:
+                    base_prompt += f"\n\nMetas actuales del usuario: {', '.join(focus_section)}"
+        
+        return base_prompt
     
     def can_do(self, action: str) -> tuple[bool, str]:
         """Check if Katy can perform an action.
@@ -124,6 +154,10 @@ class KatySkill:
             self.memory["turns"] = self.memory["turns"][-max_turns:]
         
         self._save_memory()
+        
+        # Also log to vault if available
+        if self.vault_memory.is_available():
+            self.vault_memory.add_conversation_log(user_input, katy_response)
     
     def get_conversation_context(self) -> str:
         """Get recent conversation context for the LLM."""
@@ -137,6 +171,12 @@ class KatySkill:
             context += f"Katy: {turn['katy']}\n"
         
         return context
+    
+    def get_vault_context(self, query: str) -> str:
+        """Get relevant vault context for a query."""
+        if not self.vault_memory.is_available():
+            return ""
+        return self.vault_memory.get_context_for_query(query)
     
     def set_user_name(self, name: str):
         """Remember user's name."""
