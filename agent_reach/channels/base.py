@@ -60,11 +60,24 @@ class Channel(ABC):
 
     def check(self, config=None) -> Tuple[str, str]:
         """
-        Check if this channel's upstream tool is available.
-        Returns (status, message) where status is 'ok'/'warn'/'off'/'error'.
+        Check if this channel\'s upstream tool is available.
+        Returns (status, message) where status is \'ok\'/\'warn\'/\'off\'/\'error\'.
 
         Subclasses with external backends must really probe them (see
         agent_reach.probe.probe_command) and set self.active_backend.
         """
         self.active_backend = self.backends[0] if self.backends else "内置"
         return "ok", f"{'、'.join(self.backends) if self.backends else '内置'}"
+
+    def run(self, action: str, params: dict) -> str:
+        """
+        Run a specific action with parameters. Used by the dispatcher.
+
+        Args:
+            action: The action to perform (e.g., "search", "read", "transcribe")
+            params: Parameters for the action
+
+        Returns:
+            The result of the action as a string
+        """
+        raise NotImplementedError(f"{self.name} channel does not implement the run method")

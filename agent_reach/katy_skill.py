@@ -110,6 +110,14 @@ class KatySkill:
         
         return base_prompt
     
+    def get_rules(self) -> list:
+        """Get behavior rules from katy.yaml."""
+        return self.config.get("personality", {}).get("rules", [])
+    
+    def get_personality(self) -> dict:
+        """Get personality settings."""
+        return self.config.get("personality", {})
+    
     def can_do(self, action: str) -> tuple[bool, str]:
         """Check if Katy can perform an action.
         

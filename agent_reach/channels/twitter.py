@@ -16,6 +16,60 @@ class TwitterChannel(Channel):
         d = urlparse(url).netloc.lower()
         return "x.com" in d or "twitter.com" in d
 
+    def run(self, action: str, params: dict) -> str:
+        """Run actions for the Twitter channel."""
+        if action == "search":
+            query = params.get("query", "")
+            limit = params.get("limit", 5)
+            return self._search(query, limit)
+        elif action == "read":
+            url = params.get("url", "")
+            return self._read(url)
+        else:
+            raise NotImplementedError(f"{self.name}.run() not implemented for action '{action}'")
+
+    def _search(self, query: str, limit: int = 5) -> str:
+        """Search for Twitter/X posts."""
+        if not hasattr(self, 'active_backend') or not self.active_backend:
+            return "[Katy] Twitter no está disponible"
+        
+        try:
+            if self.active_backend == "twitter-cli":
+                import subprocess
+                cmd = ["twitter", "search", query, "--limit", str(limit)]
+                result = subprocess.run(
+                    cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30
+                )
+                if result.returncode == 0:
+                    return result.stdout
+                else:
+                    return f"[Katy] Error searching Twitter: {result.stderr}"
+            elif self.active_backend == "OpenCLI":
+                # For OpenCLI, just return a message about using the web interface
+                return "[Katy] Twitter search via OpenCLI requiere un navegador web. Intenta usar Twitter manualmente."
+            else:
+                return "[Katy] Backend de Twitter no implementado para búsqueda"
+        except Exception as e:
+            return f"[Katy] Error ejecutando búsqueda de Twitter: {str(e)}"
+
+    def _read(self, url: str) -> str:
+        """Read a Twitter/X post/thread."""
+        if not hasattr(self, 'active_backend') or not self.active_backend:
+            return "[Katy] Twitter no está disponible"
+        
+        try:
+            import subprocess
+            cmd = ["twitter", "read", url]
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30
+            )
+            if result.returncode == 0:
+                return result.stdout
+            else:
+                return f"[Katy] Error leyendo Tweet: {result.stderr}"
+        except Exception as e:
+            return f"[Katy] Error ejecutando lectura de Tweet: {str(e)}"
+
     def check(self, config=None):
         """Probe candidates in order; first fully-usable backend wins.
 
@@ -143,3 +197,50 @@ class TwitterChannel(Channel):
                 "bird CLI 已安装但认证检查失败。"
             )
         return last_failure
+
+    def run(self, action: str, params: dict) -> str:
+        """Run actions for the Twitter channel."""
+        if action == "search":
+            query = params.get("query", "")
+            return self._search(query)
+        elif action == "read":
+            url = params.get("url", "")
+            return self._read(url)
+        else:
+            raise NotImplementedError(f"{self.name}.run() not implemented for action '{action}'")
+
+    def _search(self, query: str) -> str:
+        """Search for tweets."""
+        if not hasattr(self, 'active_backend') or not self.active_backend:
+            return "[Katy] Twitter no está disponible"
+        
+        try:
+            import subprocess
+            cmd = ["twitter", "search", query, "--limit", "5"]
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30
+            )
+            if result.returncode == 0:
+                return result.stdout.strip() if result.stdout else "[Katy] No se encontraron resultados"
+            else:
+                return f"[Katy] Error buscando en Twitter: {result.stderr.strip()}"
+        except Exception as e:
+            return f"[Katy] Error ejecutando búsqueda en Twitter: {str(e)}"
+
+    def _read(self, url: str) -> str:
+        """Read a tweet or thread."""
+        if not hasattr(self, 'active_backend') or not self.active_backend:
+            return "[Katy] Twitter no está disponible"
+        
+        try:
+            import subprocess
+            cmd = ["twitter", "read", url]
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30
+            )
+            if result.returncode == 0:
+                return result.stdout.strip() if result.stdout else "[Katy] No se pudo leer el tweet"
+            else:
+                return f"[Katy] Error leyendo tweet: {result.stderr.strip()}"
+        except Exception as e:
+            return f"[Katy] Error ejecutando lectura en Twitter: {str(e)}"

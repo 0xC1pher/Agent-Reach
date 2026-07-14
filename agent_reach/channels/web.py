@@ -32,3 +32,11 @@ class WebChannel(Channel):
         )
         with urllib.request.urlopen(req, timeout=30) as resp:
             return resp.read().decode("utf-8")
+
+    def run(self, action: str, params: dict) -> str:
+        """Run actions for the Web channel."""
+        if action == "read":
+            url = params.get("url", "")
+            return self.read(url)
+        else:
+            raise NotImplementedError(f"{self.name}.run() not implemented for action '{action}'")

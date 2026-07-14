@@ -174,6 +174,46 @@ Algunas tareas van más allá de "leer": operaciones web con login, envío de fo
 
 Katy es un asistente de voz que funciona **100% local** sin API keys. Usa Whisper para escuchar, Qwen2.5 para pensar, y KittenTTS para responder con voz femenina en español.
 
+### Multi-Provider LLM (Model-Agnostic)
+
+Katy soporta **cualquier modelo** sin cambiar el comportamiento:
+
+| Provider | Configuración | Uso |
+|----------|---------------|-----|
+| **Groq** | `GROQ_API_KEY=xxx` | Rápido, tier gratis |
+| **OpenAI** | `OPENAI_API_KEY=xxx` | gpt-4o-mini, gpt-4o |
+| **Local** | Sin configuración | Qwen2.5-0.5B (~1GB RAM) |
+
+```python
+# Cambiar modelo dinámicamente
+from agent_reach.katy_llm import switch_model
+
+switch_model("groq")   # Usar Groq (rápido)
+switch_model("openai") # Usar OpenAI
+switch_model("local")  # Modelo local
+```
+
+### Tool Calling Unificado
+
+Cualquier modelo puede usar las herramientas de Katy:
+
+```python
+from agent_reach.tool_dispatcher import ToolDispatcher
+
+dispatcher = ToolDispatcher()
+
+# Búsqueda en Twitter
+result = dispatcher.dispatch("busca en Twitter qué dicen sobre Python 4")
+
+# Leer contenido web
+result = dispatcher.dispatch("lee https://docs.python.org")
+
+# YouTube
+result = dispatcher.dispatch("busca en YouTube tutoriales de React")
+```
+
+### Configuración
+
 ```bash
 # Instalar dependencias
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
@@ -196,7 +236,7 @@ agent-reach katy vault --status      # Memoria persistente
 | Característica | Detalle |
 |----------------|---------|
 | **STT (escuchar)** | Whisper small — modelo de OpenAI, funciona en CPU |
-| **LLM (pensar)** | Qwen2.5-0.5B — modelo local (~1GB RAM), responde en español |
+| **LLM (pensar)** | Multi-provider: Groq, OpenAI, o local Qwen2.5 |
 | **TTS (hablar)** | KittenTTS — modelo local ligero (22MB), voz femenina |
 | **Memoria** | obsidian-mind vault — persistencia entre sesiones |
 | **Alertas** | Clima (wttr.in) + Sismos (USGS) — gratis sin API keys |
@@ -236,6 +276,46 @@ channels/
 ├── __init__.py     → Registro de canales (para diagnóstico de doctor)
 
 katy_*.py           → Módulos de Katy (memoria, alertas, listener, LLM)
+```
+
+### 🤖 Tool Calling System (Autónomo)
+
+Katy puede ejecutar herramientas automáticamente basándose en la intención del usuario:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│  IntentClassifier → ToolGate → ToolExecutor → ResponseFormatter   │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+**Intents soportados:**
+- `twitter_search` — Buscar en Twitter/X
+- `twitter_read` — Leer tweets/hilos
+- `youtube_search` — Buscar videos
+- `youtube_read` — Leer detalles de video
+- `rss_parse` — Parsear feeds RSS/Atom
+- `web_read` — Leer páginas web
+- `web_search` — Búsqueda en internet
+- `memory_search` — Buscar en memoria/obsidian-mind
+- `weather` — Consultar clima
+- `calculate` — Cálculos matemáticos
+- `memory_store` — Guardar información
+
+**Ejemplo de uso:**
+```python
+from agent_reach.tool_dispatcher import ToolDispatcher
+
+dispatcher = ToolDispatcher()
+
+# El sistema detecta automáticamente la intención
+result = dispatcher.dispatch("busca en Twitter qué dicen sobre Python 4")
+# → Intent: twitter_search, Channel: twitter, Action: search
+
+result = dispatcher.dispatch("lee https://docs.python.org")
+# → Intent: web_read, Channel: web, Action: read
+
+result = dispatcher.dispatch("clima en Barcelona")
+# → Intent: weather, Channel: weather, Action: get
 ```
 
 Cada archivo de canal **prueba real** cada backend candidato en orden (no solo verifica si el comando existe), el primero que funciona completamente es seleccionado; los que fallan dan instrucciones de reparación. La lectura y búsqueda reales las hace el Agent llamando directamente a las herramientas upstream.

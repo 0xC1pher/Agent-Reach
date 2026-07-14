@@ -32,6 +32,41 @@ class YouTubeChannel(Channel):
         d = urlparse(url).netloc.lower()
         return "youtube.com" in d or "youtu.be" in d
 
+    def run(self, action: str, params: dict) -> str:
+        """Run actions for the YouTube channel."""
+        if action == "search":
+            query = params.get("query", "")
+            return self._search(query)
+        else:
+            raise NotImplementedError(f"{self.name}.run() not implemented for action '{action}'")
+
+    def _search(self, query: str) -> str:
+        """Search for YouTube videos."""
+        if not hasattr(self, 'active_backend') or not self.active_backend:
+            return "[Katy] YouTube no está disponible"
+        
+        try:
+            import subprocess
+            cmd = ["yt-dlp", f"ytsearch5:{query}", "--dump-json", "--flat-playlist"]
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30
+            )
+            if result.returncode == 0:
+                import json
+                videos = []
+                for line in result.stdout.strip().split('\n'):
+                    if line:
+                        try:
+                            video = json.loads(line)
+                            videos.append(f"Título: {video.get('title', 'Sin título')}\nURL: https://youtube.com/watch?v={video.get('id', '')}\nDuración: {video.get('duration_string', 'N/A')}")
+                        except:
+                            continue
+                return "\n\n---\n\n".join(videos)
+            else:
+                return f"[Katy] Error buscando en YouTube: {result.stderr}"
+        except Exception as e:
+            return f"[Katy] Error ejecutando búsqueda de YouTube: {str(e)}"
+
     def check(self, config=None):
         # 真跑 yt-dlp --version 探活，区分未装 / venv 断链 / 跑不动
         probe = probe_command("yt-dlp", ["--version"], timeout=10, package="yt-dlp")
@@ -77,6 +112,55 @@ class YouTubeChannel(Channel):
                 else:
                     msg += f"，可转写音频（{'→'.join(providers)}）"
         return "ok", msg
+
+    def run(self, action: str, params: dict) -> str:
+        """Run actions for the YouTube channel."""
+        if action == "search":
+            query = params.get("query", "")
+            return self._search(query)
+        else:
+            raise NotImplementedError(f"{self.name}.run() not implemented for action '{action}'")
+
+    def _search(self, query: str) -> str:
+        """Search for YouTube videos."""
+        if not hasattr(self, 'active_backend') or not self.active_backend:
+            return "[Katy] YouTube no está disponible"
+        
+        try:
+            import subprocess
+            cmd = ["yt-dlp", f"ytsearch5:{query}", "--dump-json", "--flat-playlist"]
+            result = subprocess.run(
+                cmd, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=30
+            )
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                if lines:
+                    import json
+                    videos = []
+                    for line in lines:
+                        if line.strip():
+                            try:
+                                data = json.loads(line)
+                                videos.append({
+                                    "title": data.get("title", ""),
+                                    "url": data.get("url", ""),
+                                    "uploader": data.get("uploader", ""),
+                                    "duration": data.get("duration_string", data.get("duration", "")),
+                                    "view_count": data.get("view_count", 0)
+                                })
+                            except json.JSONDecodeError:
+                                pass
+                    if videos:
+                        result_text = "Videos encontrados:\n"
+                        for i, video in enumerate(videos[:5], 1):
+                            result_text += f"{i}. {video.get('title', 'Unknown')} ({video.get('url', 'No URL')})\n"
+                        return result_text
+                    return "[Katy] No se encontraron videos"
+                return "[Katy] No se encontraron videos"
+            else:
+                return f"[Katy] Error buscando en YouTube: {result.stderr.strip()}"
+        except Exception as e:
+            return f"[Katy] Error ejecutando búsqueda en YouTube: {str(e)}"
 
     def transcribe(self, url: str, *, provider: str = "auto", config=None) -> str:
         """Download a YouTube video's audio and return its transcript.
