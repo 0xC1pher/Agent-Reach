@@ -92,7 +92,7 @@ Actualiza Agent Reach: https://raw.githubusercontent.com/Panniantong/agent-reach
 | 📈 **Xueqiu** | Cotizaciones, buscar acciones, posts populares, ranking de acciones | — | Di a tu Agent "Configura Xueqiu" |
 | 🎙️ **Xiaoyuzhou Podcast** | — | Convertir audio a texto (Whisper, Key gratuita) | Di a tu Agent "Configura Xiaoyuzhou" |
 | 🔊 **KittenTTS** | — | Texto a voz (modelo local ligero) | Di a tu Agent "Instala KittenTTS" |
-| 🗣️ **Katy** | Voz a voz local (Gemma 3n + KittenTTS) | — | Di a tu Agent "Configura Katy" |
+| 🗣️ **Katy** | Voz a voz local (Whisper + Qwen2.5 + KittenTTS) | Memoria persistente, alertas proactivas | Di a tu Agent "Configura Katy" |
 
 > **¿No sabes cómo configurar? No busques en la documentación.** Simplemente di a tu Agent "Configura XXX", él sabrá qué necesita y te guiará paso a paso.
 >
@@ -172,33 +172,36 @@ Algunas tareas van más allá de "leer": operaciones web con login, envío de fo
 
 ## 🗣️ Katy — Asistente de Voz Local
 
-Katy es un asistente de voz que funciona **100% local** sin API keys. Usa Gemma 3n para escuchar y entender audio, y KittenTTS para responder con voz.
+Katy es un asistente de voz que funciona **100% local** sin API keys. Usa Whisper para escuchar, Qwen2.5 para pensar, y KittenTTS para responder con voz femenina en español.
 
 ```bash
 # Instalar dependencias
 pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-pip install transformers unsloth_zoo
-pip install kittentts
+pip install transformers kittentts openai-whisper
 choco install espeak-ng
 
 # Configurar Katy
 agent-reach configure katy-voice expr-voice-2-f   # Voz femenina
 agent-reach configure katy-speed 1.2              # Velocidad
-agent-reach configure katy-4bit true              # Modelo 4-bit (menos RAM)
 
 # Usar Katy
 agent-reach katy listen audio.wav    # Entender audio
 agent-reach katy speak "Hola"        # Generar voz
 agent-reach katy chat                # Chat interactivo
+agent-reach katy continuous          # Escucha continua con wake word
+agent-reach katy alerts              # Alertas proactivas (clima, sismos)
+agent-reach katy vault --status      # Memoria persistente
 ```
 
 | Característica | Detalle |
 |----------------|---------|
-| **STT (escuchar)** | Gemma 3n E2B — modelo multimodal que entiende audio directamente |
-| **TTS (hablar)** | KittenTTS — modelo local ligero (22MB) |
-| **Archivos** | Temporales — se borran después de usar, no acumula miles de archivos |
-| **Requisitos** | ~4GB RAM para Gemma 3n, funciona sin GPU |
-| **Modelo** | Se descarga una vez (~32MB total), después funciona offline |
+| **STT (escuchar)** | Whisper small — modelo de OpenAI, funciona en CPU |
+| **LLM (pensar)** | Qwen2.5-0.5B — modelo local (~1GB RAM), responde en español |
+| **TTS (hablar)** | KittenTTS — modelo local ligero (22MB), voz femenina |
+| **Memoria** | obsidian-mind vault — persistencia entre sesiones |
+| **Alertas** | Clima (wttr.in) + Sismos (USGS) — gratis sin API keys |
+| **Archivos** | Temporales — se borran después de usar |
+| **Requisitos** | ~2GB RAM, funciona sin GPU |
 
 ---
 
@@ -229,8 +232,10 @@ channels/
 ├── rss.py          → feedparser
 ├── exa_search.py   → Exa vía mcporter
 ├── kittentts.py    → KittenTTS (texto a voz)
-├── katy.py         → Gemma 3n (escuchar) + KittenTTS (hablar)
-└── __init__.py     → Registro de canales (para diagnóstico de doctor)
+├── katy.py         → Whisper (escuchar) + Qwen2.5 (pensar) + KittenTTS (hablar)
+├── __init__.py     → Registro de canales (para diagnóstico de doctor)
+
+katy_*.py           → Módulos de Katy (memoria, alertas, listener, LLM)
 ```
 
 Cada archivo de canal **prueba real** cada backend candidato en orden (no solo verifica si el comando existe), el primero que funciona completamente es seleccionado; los que fallan dan instrucciones de reparación. La lectura y búsqueda reales las hace el Agent llamando directamente a las herramientas upstream.
@@ -253,7 +258,7 @@ Cada archivo de canal **prueba real** cada backend candidato en orden (no solo v
 | LinkedIn | [linkedin-scraper-mcp](https://github.com/stickerdaniel/linkedin-mcp-server) | Jina Reader | Servicio MCP, automatización de navegador |
 | Voz a texto | [Free Claude Code](https://github.com/Panniantong/free-claude-code) proxy | Groq ▸ OpenAI | FCC proxy inferencia local gratis, sin API Key |
 | Texto a voz | [KittenTTS](https://github.com/KittenML/KittenTTS) | — | Modelo local ligero (0.6B), sin GPU |
-| Voz a voz (Katy) | [Gemma 3n](https://ai.google.dev/gemma/docs/gemma-3n) + KittenTTS | — | Modelo multimodal local, entiende audio + genera voz, sin API Key |
+| Voz a voz (Katy) | [Whisper](https://github.com/openai/whisper) + [Qwen2.5](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct) + KittenTTS | — | STT + LLM + TTS local, sin API Key, memoria persistente |
 
 > 📌 Estas son las «selecciones actuales», basadas en pruebas reales periódicas. Si una ruta falla, cambiamos a la siguiente—`agent-reach doctor` siempre te dice cuál se está usando.
 
@@ -323,7 +328,7 @@ Star ahora, para que lo encuentres cuando lo necesites. ⭐
 
 ## Agradecimientos
 
-[OpenCLI](https://github.com/jackwener/opencli) · [twitter-cli](https://github.com/public-clis/twitter-cli) · [rdt-cli](https://github.com/public-clis/rdt-cli) · [xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp) · [xhs-cli](https://github.com/jackwener/xiaohongshu-cli) · [bili-cli](https://github.com/public-clis/bilibili-cli) · [yt-dlp](https://github.com/yt-dlp/yt-dlp) · [Jina Reader](https://github.com/jina-ai/reader) · [Exa](https://exa.ai) · [mcporter](https://github.com/nicobailon/mcporter) · [feedparser](https://github.com/kurtmckee/feedparser) · [linkedin-scraper-mcp](https://github.com/stickerdaniel/linkedin-mcp-server) · [KittenTTS](https://github.com/KittenML/KittenTTS) · [Free Claude Code](https://github.com/Panniantong/free-claude-code)
+[OpenCLI](https://github.com/jackwener/opencli) · [twitter-cli](https://github.com/public-clis/twitter-cli) · [rdt-cli](https://github.com/public-clis/rdt-cli) · [xiaohongshu-mcp](https://github.com/xpzouying/xiaohongshu-mcp) · [xhs-cli](https://github.com/jackwener/xiaohongshu-cli) · [bili-cli](https://github.com/public-clis/bilibili-cli) · [yt-dlp](https://github.com/yt-dlp/yt-dlp) · [Jina Reader](https://github.com/jina-ai/reader) · [Exa](https://exa.ai) · [mcporter](https://github.com/nicobailon/mcporter) · [feedparser](https://github.com/kurtmckee/feedparser) · [linkedin-scraper-mcp](https://github.com/stickerdaniel/linkedin-mcp-server) · [KittenTTS](https://github.com/KittenML/KittenTTS) · [Whisper](https://github.com/openai/whisper) · [Qwen2.5](https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct) · [obsidian-mind](https://github.com/breferrari/obsidian-mind) · [Free Claude Code](https://github.com/Panniantong/free-claude-code)
 
 ## Contacto
 

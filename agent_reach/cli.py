@@ -141,7 +141,39 @@ def main():
     katy_speak = katy_sub.add_parser("speak", help="Generar voz desde texto")
     katy_speak.add_argument("text", help="Texto para synthesizar")
     katy_speak.add_argument("-o", "--output", default=None, help="Archivo de salida")
-    katy_chat = katy_sub.add_parser("chat", help="Chat de voz interactivo")
+    katy_chat = katy_sub.add_parser("chat", help="Chat de voz interactivo con personalidad")
+    katy_personality = katy_sub.add_parser("personality", help="Ver/modificar personalidad de Katy")
+    katy_personality.add_argument("--set-key", help="Clave de personalidad a modificar")
+    katy_personality.add_argument("--set-value", help="Nuevo valor")
+    katy_permissions = katy_sub.add_parser("permissions", help="Ver permisos de Katy")
+    katy_memory = katy_sub.add_parser("memory", help="Ver/limpiar memoria de conversación")
+    katy_memory.add_argument("--clear", action="store_true", help="Limpiar memoria")
+    katy_name = katy_sub.add_parser("name", help="Establecer nombre del usuario")
+    katy_name.add_argument("name", nargs="?", help="Nombre del usuario")
+    katy_continuous = katy_sub.add_parser("continuous", help="Escucha continua con wake word")
+    katy_continuous.add_argument("--stop", action="store_true", help="Detener escucha continua")
+    katy_alerts = katy_sub.add_parser("alerts", help="Alertas proactivas (clima, noticias)")
+    katy_alerts.add_argument("--start", action="store_true", help="Iniciar alertas proactivas")
+    katy_alerts.add_argument("--stop", action="store_true", help="Detener alertas")
+    katy_alerts.add_argument("--check", action="store_true", help="Verificar ahora")
+    katy_alerts.add_argument("--location", help="Establecer ubicación para clima")
+    katy_alerts.add_argument("--add-topic", help="Agregar tema de noticias")
+    katy_alerts.add_argument("--remove-topic", help="Remover tema de noticias")
+    katy_alerts.add_argument("--set-coords", nargs=2, type=float, metavar=("LAT", "LON"), help="Establecer coordenadas para sismos")
+    katy_alerts.add_argument("--min-magnitude", type=float, help="Magnitud mínima para alertas de sismo")
+    katy_alerts.add_argument("--radius", type=int, help="Radio en km para buscar sismos")
+    
+    # ── katy memory vault ──
+    katy_vault = katy_sub.add_parser("vault", help="Memoria persistente (obsidian-mind vault)")
+    katy_vault.add_argument("--init", action="store_true", help="Inicializar vault de memoria")
+    katy_vault.add_argument("--status", action="store_true", help="Ver estado del vault")
+    katy_vault.add_argument("--search", help="Buscar en el vault")
+    katy_vault.add_argument("--north-star", action="store_true", help="Ver metas actuales")
+    katy_vault.add_argument("--set-focus", help="Actualizar foco actual")
+    katy_vault.add_argument("--add-decision", nargs=2, metavar=("DECISION", "CONTEXTO"), help="Agregar decisión")
+    katy_vault.add_argument("--add-pattern", nargs=2, metavar=("PATRON", "DESCRIPCION"), help="Agregar patrón")
+    katy_vault.add_argument("--add-gotcha", nargs=2, metavar=("PROBLEMA", "SOLUCION"), help="Agregar problema conocido")
+    katy_vault.add_argument("--stats", action="store_true", help="Ver estadísticas del vault")
 
     # ── check-update ──
     # ── transcribe ──
@@ -1197,6 +1229,7 @@ def _cmd_katy(args):
 
     from agent_reach.channels.katy import KatyChannel
     from agent_reach.config import Config
+    from agent_reach.katy_skill import get_katy_skill
 
     # Set espeak library path
     espeak_dll = r"C:\Program Files\eSpeak NG\libespeak-ng.dll"
@@ -1208,6 +1241,8 @@ def _cmd_katy(args):
     if status != "ok":
         print(f"❌ {msg}")
         sys.exit(1)
+
+    skill = get_katy_skill()
 
     if args.katy_action == "listen":
         text = ch.listen(args.audio)
@@ -1222,29 +1257,280 @@ def _cmd_katy(args):
         print(f"[Katy] Audio generado: {result}")
 
     elif args.katy_action == "chat":
+        print(f"[Katy] {skill.get_greeting()}")
         print("[Katy] Modo chat de voz. Di algo (o escribe 'salir' para terminar)")
         while True:
             try:
                 user_input = input("\n[Tú] > ").strip()
                 if user_input.lower() in ("salir", "exit", "quit"):
-                    print("[Katy] ¡Hasta luego!")
+                    print(f"[Katy] {skill.config['personality']['farewell']}")
                     break
 
                 if user_input:
-                    # Text input → speak response
+                    # Check permissions
+                    allowed, reason = skill.can_do("search")
+                    if not allowed:
+                        print(f"[Katy] {reason}")
+                        continue
+                    
+                    # Generate response with personality
+                    response = ch._generate_response(user_input, skill)
+                    skill.add_conversation_turn(user_input, response)
+                    response = skill.format_response(response)
+                    
+                    # Speak response
                     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
                         response_audio = f.name
-                    ch.speak(f"Entendí: {user_input}", response_audio)
+                    ch.speak(response, response_audio)
+                    print(f"[Katy] {response}")
                     print(f"[Katy] Audio: {response_audio}")
 
             except KeyboardInterrupt:
-                print("\n[Katy] ¡Hasta luego!")
+                print(f"\n[Katy] {skill.config['personality']['farewell']}")
                 break
             except EOFError:
                 break
 
+    elif args.katy_action == "personality":
+        # Show/update personality
+        if args.set_key and args.set_value:
+            skill.config["personality"][args.set_key] = args.set_value
+            print(f"[Katy] Personalidad actualizada: {args.set_key} = {args.set_value}")
+        else:
+            print("[Katy] Personalidad actual:")
+            for k, v in skill.config.get("personality", {}).items():
+                if k != "rules":
+                    print(f"  {k}: {v}")
+
+    elif args.katy_action == "permissions":
+        # Show permissions
+        perms = skill.config.get("permissions", {})
+        print("[Katy] Permisos:")
+        print(f"  Permitidos: {', '.join(perms.get('allowed', []))}")
+        print(f"  Requieren confirmación: {', '.join(perms.get('confirm', []))}")
+        print(f"  Prohibidos: {', '.join(perms.get('denied', []))}")
+
+    elif args.katy_action == "memory":
+        # Show/clear memory
+        if args.clear:
+            skill.memory = {"turns": [], "user_name": None, "preferences": {}}
+            skill._save_memory()
+            print("[Katy] Memoria limpiada.")
+        else:
+            print("[Katy] Memoria:")
+            print(f"  Nombre de usuario: {skill.get_user_name() or 'No recordado'}")
+            print(f"  Turnos en historial: {len(skill.memory.get('turns', []))}")
+            if skill.memory.get("turns"):
+                print("  Últimos turnos:")
+                for turn in skill.memory["turns"][-3:]:
+                    print(f"    Tú: {turn['user'][:50]}...")
+                    print(f"    Katy: {turn['katy'][:50]}...")
+
+    elif args.katy_action == "name":
+        # Set user name
+        if args.name:
+            skill.set_user_name(args.name)
+            print(f"[Katy] ¡Hola {args.name}! Te recordaré.")
+        else:
+            name = skill.get_user_name()
+            print(f"[Katy] Nombre: {name or 'No recordado'}")
+
+    elif args.katy_action == "continuous":
+        # Continuous listening with wake word
+        from agent_reach.katy_listener import get_listener
+        
+        listener = get_listener()
+        
+        if args.stop:
+            listener.stop_listening()
+            print("[Katy] Escucha continua detenida.")
+        else:
+            def on_wake(text, audio):
+                print(f"\n[Katy] ¡Desperté! {text}")
+                # Process the wake command
+                response = ch._generate_response(text, skill)
+                skill.add_conversation_turn(text, response)
+                print(f"[Katy] {response}")
+                # Speak response
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                    response_audio = f.name
+                ch.speak(response, response_audio)
+                print(f"[Katy] Audio: {response_audio}")
+            
+            listener.on_wake = on_wake
+            if listener.start_listening():
+                print("[Katy] Escucha continua iniciada. Di 'Hey Katy' para activar.")
+                print("[Katy] Presiona Ctrl+C para detener.")
+                try:
+                    while listener.listening:
+                        import time
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    listener.stop_listening()
+            else:
+                print("[Katy] No se pudo iniciar escucha continua.")
+
+    elif args.katy_action == "alerts":
+        # Proactive alerts
+        from agent_reach.katy_alerts import get_alerts
+        
+        alerts = get_alerts()
+        
+        if args.start:
+            def on_alert(alert):
+                print(f"\n[Katy Alerta] {alert.message}")
+                # Speak alert
+                import tempfile
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+                    alert_audio = f.name
+                ch.speak(alert.message, alert_audio)
+                print(f"[Katy Alerta] Audio: {alert_audio}")
+            
+            alerts.start(on_alert)
+            print("[Katy] Alertas proactivas iniciadas.")
+        
+        elif args.stop:
+            alerts.stop()
+            print("[Katy] Alertas proactivas detenidas.")
+        
+        elif args.check:
+            alerts.check_now()
+        
+        elif args.location:
+            alerts.set_location(args.location)
+        
+        elif args.set_coords:
+            alerts.coords = tuple(args.set_coords)
+            alerts._save_config()
+            print(f"[Katy] Coordenadas actualizadas: {args.set_coords}")
+        
+        elif args.min_magnitude:
+            alerts.earthquake_min_magnitude = args.min_magnitude
+            alerts._save_config()
+            print(f"[Katy] Magnitud mínima: {args.min_magnitude}")
+        
+        elif args.radius:
+            alerts.earthquake_radius_km = args.radius
+            alerts._save_config()
+            print(f"[Katy] Radio de búsqueda: {args.radius}km")
+        
+        elif args.add_topic:
+            alerts.add_news_topic(args.add_topic)
+        
+        elif args.remove_topic:
+            alerts.remove_news_topic(args.remove_topic)
+        
+        else:
+            # Show status
+            print("[Katy] Alertas proactivas:")
+            print(f"  Estado: {'Activas' if alerts.running else 'Inactivas'}")
+            print(f"  Ubicación: {alerts.location}")
+            print(f"  Coordenadas: {alerts.coords}")
+            print(f"  Sismos: radio {alerts.earthquake_radius_km}km, min mag {alerts.earthquake_min_magnitude}")
+            print(f"  Temas: {', '.join(alerts.news_topics) if alerts.news_topics else 'Ninguno'}")
+            print(f"  Intervalo: {alerts.check_interval//60} minutos")
+            print(f"  Última verificación: {alerts.last_check or 'Nunca'}")
+    
+    elif args.katy_action == "vault":
+        # Vault memory commands
+        from agent_reach.katy_memory import get_katy_memory
+        
+        memory = get_katy_memory()
+        
+        if args.init:
+            # Initialize vault
+            vault_path = Path.home() / "obsidian-mind"
+            if vault_path.exists():
+                print(f"[Katy] Vault encontrado en: {vault_path}")
+                memory = get_katy_memory(str(vault_path))
+            else:
+                print("[Katy] No se encontró vault de obsidian-mind.")
+                print("[Katy] Clonando vault...")
+                import subprocess
+                result = subprocess.run(
+                    ["git", "clone", "https://github.com/breferrari/obsidian-mind.git", str(vault_path)],
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    print(f"[Katy] Vault clonado en: {vault_path}")
+                    memory = get_katy_memory(str(vault_path))
+                else:
+                    print(f"[Katy] Error al clonar: {result.stderr}")
+                    sys.exit(1)
+        
+        if not memory.is_available():
+            print("[Katy] Vault no disponible. Usa 'katy vault --init' para crear uno.")
+            sys.exit(1)
+        
+        if args.status:
+            status = memory.get_status()
+            print("[Katy] Estado del vault:")
+            print(f"  Ruta: {status['path']}")
+            print(f"  Notas brain: {status['brain_notes']}")
+            print(f"  Notas work: {status['work_notes']}")
+            print(f"  Total: {status['total_notes']}")
+        
+        elif args.search:
+            results = memory.search(args.search)
+            if results:
+                print(f"[Katy] Resultados para '{args.search}':")
+                for r in results:
+                    print(f"  [{r['source']}] {r['title']}")
+                    if r['excerpt']:
+                        print(f"    {r['excerpt'][:100]}...")
+            else:
+                print(f"[Katy] No se encontraron resultados para '{args.search}'")
+        
+        elif args.north_star:
+            content = memory.get_north_star()
+            if content:
+                print("[Katy] North Star:")
+                print(content)
+            else:
+                print("[Katy] North Star no disponible.")
+        
+        elif args.set_focus:
+            memory.update_north_star(args.set_focus)
+            print(f"[Katy] Foco actualizado: {args.set_focus}")
+        
+        elif args.add_decision:
+            decision, context = args.add_decision
+            memory.add_decision(decision, context)
+            print(f"[Katy] Decisión registrada: {decision}")
+        
+        elif args.add_pattern:
+            pattern, description = args.add_pattern
+            memory.add_pattern(pattern, description)
+            print(f"[Katy] Patrón registrado: {pattern}")
+        
+        elif args.add_gotcha:
+            issue, solution = args.add_gotcha
+            memory.add_gotcha(issue, solution)
+            print(f"[Katy] Problema registrado: {issue}")
+        
+        elif args.stats:
+            stats = memory.get_stats()
+            print("[Katy] Estadísticas del vault:")
+            print(f"  Ruta: {stats.get('vault_path', 'N/A')}")
+            print(f"  Notas brain: {stats.get('brain_notes', 0)}")
+            print(f"  Brain con contenido: {stats.get('brain_with_content', 0)}")
+            print(f"  Work activo: {stats.get('work_active', 0)}")
+            print(f"  Work archivado: {stats.get('work_archived', 0)}")
+            print(f"  Total: {stats.get('total_notes', 0)}")
+        
+        else:
+            # Show vault info
+            status = memory.get_status()
+            print("[Katy] Vault de memoria persistente:")
+            print(f"  Estado: {'Activo' if status['available'] else 'No disponible'}")
+            if status['available']:
+                print(f"  Ruta: {status['path']}")
+                print(f"  Notas: {status['total_notes']}")
+            print("\nUso: agent-reach katy vault [--init|--status|--search|--north-star|--set-focus|--stats]")
+
     else:
-        print("Uso: agent-reach katy [listen|speak|chat]")
+        print("Uso: agent-reach katy [listen|speak|chat|personality|permissions|memory|name|continuous|alerts|vault]")
         sys.exit(1)
 
 

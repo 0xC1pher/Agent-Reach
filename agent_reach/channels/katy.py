@@ -22,14 +22,13 @@ from .base import Channel
 
 class KatyChannel(Channel):
     name = "katy"
-    description = "Katy — asistente de voz local (Gemma 3n + KittenTTS)"
+    description = "Katy — asistente de voz local (Whisper + Gemma 2B + KittenTTS)"
     backends = ["katy"]
     tier = 2  # needs pip install + model download
 
     # Model config
-    STT_MODEL = "unsloth/gemma-3n-E2B-it"  # 2B effective params, ~4GB
-    STT_MODEL_4BIT = "unsloth/gemma-3n-E2B-it-unsloth-bnb-4bit"  # 4-bit quantized
-    TTS_VOICE = "expr-voice-2-m"
+    STT_MODEL = "small"  # Whisper small - better accuracy
+    TTS_VOICE = "expr-voice-2-f"  # Female voice
     TTS_SPEED = 1.0
 
     def can_handle(self, url: str) -> bool:
@@ -69,32 +68,7 @@ class KatyChannel(Channel):
             return "error", "espeak-ng no instalado. Instalar: choco install espeak-ng"
 
         self.active_backend = self.backends[0]
-        return "ok", "Katy disponible (Gemma 3n + KittenTTS)"
-
-    def _load_stt_model(self, config=None):
-        """Load Gemma 3n model for speech understanding."""
-        import torch
-        from transformers import AutoProcessor, Gemma3nForConditionalGeneration
-
-        from agent_reach.config import Config
-        cfg = config or Config()
-
-        use_4bit = cfg.get("katy_4bit", "true").lower() == "true"
-        model_name = self.STT_MODEL_4BIT if use_4bit else self.STT_MODEL
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        dtype = torch.float16 if device == "cuda" else torch.float32
-
-        print(f"[Katy] Cargando modelo {model_name} en {device}...")
-
-        processor = AutoProcessor.from_pretrained(model_name)
-        model = Gemma3nForConditionalGeneration.from_pretrained(
-            model_name,
-            torch_dtype=dtype,
-            device_map=device,
-        )
-
-        return model, processor, device
+        return "ok", "Katy disponible (Whisper + Gemma 2B + KittenTTS)"
 
     def _load_tts_model(self):
         """Load KittenTTS model."""
@@ -102,50 +76,22 @@ class KatyChannel(Channel):
         return KittenTTS()
 
     def listen(self, audio_path: str, config=None) -> str:
-        """Understand spoken audio via Gemma 3n. Returns text response."""
-        import torch
-        import soundfile as sf
-        import numpy as np
+        """Transcribe spoken audio via Whisper. Returns text."""
+        import whisper
 
-        model, processor, device = self._load_stt_model(config)
+        print(f"[Katy] Cargando modelo Whisper {self.STT_MODEL}...")
+        model = whisper.load_model(self.STT_MODEL)
 
-        # Load audio
-        audio, sr = sf.read(audio_path)
-        if sr != 16000:
-            # Resample to 16kHz
-            import librosa
-            audio = librosa.resample(audio, orig_sr=sr, target_sr=16000)
+        print("[Katy] Transcribiendo audio...")
+        result = model.transcribe(
+            audio_path,
+            language="es",
+            fp16=False,
+            no_speech_threshold=0.6,
+            condition_on_previous_text=False,
+        )
 
-        # Prepare input
-        messages = [
-            {
-                "role": "user",
-                "content": [
-                    {"type": "audio", "audio": audio.tolist()},
-                    {"type": "text", "text": "Transcribe this audio accurately. If it's a question, answer it."}
-                ]
-            }
-        ]
-
-        inputs = processor.apply_chat_template(
-            messages,
-            tokenize=True,
-            return_dict=True,
-        ).to(device)
-
-        # Generate
-        with torch.no_grad():
-            output = model.generate(**inputs, max_new_tokens=256)
-
-        # Decode only the new tokens
-        response = processor.decode(output[0][inputs["input_ids"].shape[1]:], skip_special_tokens=True)
-
-        # Cleanup
-        del model, processor
-        if device == "cuda":
-            torch.cuda.empty_cache()
-
-        return response.strip()
+        return result["text"].strip()
 
     def speak(self, text: str, output_path: Optional[str] = None, config=None) -> str:
         """Generate voice from text via KittenTTS. Returns audio path."""
@@ -170,19 +116,60 @@ class KatyChannel(Channel):
         ch = KittenTTSChannel()
         return ch.synthesize(text, output_path, config=cfg)
 
+    def play(self, audio_path: str):
+        """Play audio through speakers."""
+        import sounddevice as sd
+        import soundfile as sf
+
+        data, sr = sf.read(audio_path)
+        sd.play(data, sr)
+        sd.wait()
+
     def chat_turn(self, audio_path: str, config=None) -> tuple[str, str]:
         """Process one voice turn: listen → think → speak.
         Returns (understood_text, response_audio_path)."""
+        from agent_reach.katy_skill import get_katy_skill
+        
+        skill = get_katy_skill()
+        
         # 1. Understand audio
         understood = self.listen(audio_path, config)
-
-        # 2. Generate response (for now, echo back — will integrate with AI later)
-        response_text = f"Entendí: {understood}"
-
-        # 3. Speak response
+        
+        # 2. Check wake word (if enabled)
+        if not skill.check_wake_word(understood):
+            # Not addressed to Katy — ignore
+            return understood, None
+        
+        # 3. Check permissions
+        # For now, all voice commands are treated as "search" or "chat"
+        action = "search"  # Default action
+        allowed, reason = skill.can_do(action)
+        
+        if not allowed:
+            response_text = reason
+        else:
+            # 4. Generate response using LLM with personality
+            response_text = self._generate_response(understood, skill, config)
+        
+        # 5. Add to conversation memory
+        skill.add_conversation_turn(understood, response_text)
+        
+        # 6. Format response according to personality
+        response_text = skill.format_response(response_text)
+        
+        # 7. Speak response
         with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
             response_audio = f.name
-
+        
         self.speak(response_text, response_audio, config)
-
+        
         return understood, response_audio
+    
+    def _generate_response(self, user_input: str, skill, config=None) -> str:
+        """Generate response using LLM with Katy's personality."""
+        from agent_reach.katy_llm import get_llm
+        
+        llm = get_llm(config)
+        response = llm.chat(user_input)
+        
+        return response.text
