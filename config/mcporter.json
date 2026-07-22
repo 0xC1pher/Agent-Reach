@@ -5,6 +5,13 @@
     },
     "xiaohongshu": {
       "baseUrl": "http://localhost:18060/mcp"
+    },
+    "codebase-memory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "codebase-memory-mcp"
+      ]
     }
   },
   "imports": []

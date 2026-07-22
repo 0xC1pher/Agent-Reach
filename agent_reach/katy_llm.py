@@ -57,9 +57,9 @@ class KatyLLM:
     
     def _detect_provider(self) -> Provider:
         """Detect which provider is available."""
-        if os.environ.get("GROQ_API_KEY"):
+        if self.config.get("groq_api_key") or os.environ.get("GROQ_API_KEY"):
             return Provider.GROQ
-        if os.environ.get("OPENAI_API_KEY"):
+        if self.config.get("openai_api_key") or os.environ.get("OPENAI_API_KEY"):
             return Provider.OPENAI
         return Provider.LOCAL
     
@@ -121,7 +121,7 @@ Siempre responde en español.
     def _call_groq(self, messages: List[Dict], max_tokens: int = 512) -> Optional[LLMResponse]:
         """Call Groq API."""
         try:
-            api_key = os.environ.get("GROQ_API_KEY")
+            api_key = self.config.get("groq_api_key") or os.environ.get("GROQ_API_KEY")
             if not api_key:
                 return None
             
