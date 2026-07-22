@@ -52,17 +52,23 @@ class WebChannel(Channel):
         # Try Exa search first via mcporter
         try:
             import subprocess
+            import os
+            
             # Find mcporter executable
             mcporter_path = shutil.which("mcporter") or shutil.which("mcporter.cmd")
             if mcporter_path:
+                # Use UTF-8 encoding for mcporter output
+                env = os.environ.copy()
+                env["PYTHONIOENCODING"] = "utf-8"
                 result = subprocess.run(
                     [mcporter_path, "call", "exa.web_search_exa", f"query: \"{query}\""],
                     capture_output=True,
-                    text=True,
                     timeout=30,
+                    env=env,
                 )
                 if result.returncode == 0 and result.stdout:
-                    return result.stdout
+                    # Decode with utf-8, ignore errors
+                    return result.stdout.decode("utf-8", errors="ignore")
         except Exception:
             pass
         

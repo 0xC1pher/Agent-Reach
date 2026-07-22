@@ -1274,32 +1274,38 @@ def _cmd_katy(args):
 
     elif args.katy_action == "chat":
         print(f"[Katy] {skill.get_greeting()}")
-        print("[Katy] Modo chat de voz. Di algo (o escribe 'salir' para terminar)")
+        print("[Katy] Modo chat. Puedo buscar información, leer páginas, o conversar.")
+        print("[Katy] Di 'salir' para terminar.\n")
+        
         while True:
             try:
-                user_input = input("\n[Tú] > ").strip()
+                user_input = input("[Tú] > ").strip()
                 if user_input.lower() in ("salir", "exit", "quit"):
                     print(f"[Katy] {skill.config['personality']['farewell']}")
                     break
 
-                if user_input:
-                    # Check permissions
-                    allowed, reason = skill.can_do("search")
-                    if not allowed:
-                        print(f"[Katy] {reason}")
-                        continue
+                if not user_input:
+                    continue
+
+                # Try tool calling first
+                from agent_reach.tool_dispatcher import ToolDispatcher
+                dispatcher = ToolDispatcher()
+                result = dispatcher.dispatch(user_input, verbose=False)
+
+                if result.success:
+                    # Tool worked - format response
+                    print(f"\n[Katy] {result.data}\n")
+                else:
+                    # No tool matched - use LLM for general conversation
+                    from agent_reach.katy_llm import get_llm
                     
-                    # Generate response with personality
-                    response = ch._generate_response(user_input, skill)
+                    llm = get_llm()
+                    llm_response = llm.chat(user_input)
+                    response = llm_response.text if llm_response else "No pude procesar tu pregunta."
+                    print(f"\n[Katy] {response}\n")
+                    
+                    # Save to conversation memory
                     skill.add_conversation_turn(user_input, response)
-                    response = skill.format_response(response)
-                    
-                    # Speak response
-                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
-                        response_audio = f.name
-                    ch.speak(response, response_audio)
-                    print(f"[Katy] {response}")
-                    print(f"[Katy] Audio: {response_audio}")
 
             except KeyboardInterrupt:
                 print(f"\n[Katy] {skill.config['personality']['farewell']}")
