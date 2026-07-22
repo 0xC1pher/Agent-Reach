@@ -38,5 +38,43 @@ class WebChannel(Channel):
         if action == "read":
             url = params.get("url", "")
             return self.read(url)
+        elif action == "search":
+            query = params.get("query", "")
+            return self.search(query)
         else:
             raise NotImplementedError(f"{self.name}.run() not implemented for action '{action}'")
+    
+    def search(self, query: str) -> str:
+        """Search the web using Exa or fallback to Jina Reader."""
+        import urllib.parse
+        import shutil
+        
+        # Try Exa search first via mcporter
+        try:
+            import subprocess
+            # Find mcporter executable
+            mcporter_path = shutil.which("mcporter") or shutil.which("mcporter.cmd")
+            if mcporter_path:
+                result = subprocess.run(
+                    [mcporter_path, "call", "exa.web_search_exa", f"query: \"{query}\""],
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if result.returncode == 0 and result.stdout:
+                    return result.stdout
+        except Exception:
+            pass
+        
+        # Fallback: Use Jina Reader to search Google
+        encoded_query = urllib.parse.quote(query)
+        search_url = f"https://s.jina.ai/{encoded_query}"
+        req = urllib.request.Request(
+            search_url,
+            headers={"User-Agent": _UA, "Accept": "text/plain"},
+        )
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                return resp.read().decode("utf-8")
+        except Exception as e:
+            return f"Error en la búsqueda: {str(e)}"

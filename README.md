@@ -153,12 +153,18 @@ Después de instalar, `agent-reach doctor` un solo comando te dice el estado de 
 
 Sin necesidad de configuración, solo dile a tu Agent:
 
-- "Lee este enlace" → `curl https://r.jina.ai/URL` lee cualquier página web
-- "¿Qué hace este repo de GitHub?" → `gh repo view owner/repo`
-- "¿Qué dice este video de YouTube?" → `yt-dlp` extrae subtítulos
-- "Busca tutoriales de IA en Bilibili" → `bili search` (sin login)
-- "Busca comparativas de frameworks LLM" → Búsqueda semántica Exa
-- "Suscríbete a este RSS" → `feedparser` para parsear
+- "Lee este enlace" → `agent-reach dispatch "lee https://example.com"`
+- "¿Qué hace este repo de GitHub?" → `agent-reach dispatch "lee https://github.com/owner/repo"`
+- "¿Qué dice este video de YouTube?" → `agent-reach dispatch "busca en YouTube qué dice este video"`
+- "Busca tutoriales de IA en Bilibili" → `agent-reach dispatch "busca en YouTube tutoriales de IA"`
+- "Busca comparativas de frameworks LLM" → `agent-reach dispatch "busca en internet comparativas de frameworks LLM"`
+- "Suscríbete a este RSS" → `agent-reach dispatch "revisa el RSS https://example.com/feed"`
+
+**O usa el comando `ask` para preguntas generales:**
+```bash
+agent-reach ask "¿Qué es Python?"
+agent-reach ask "¿Cómo funciona el machine learning?"
+```
 
 **No necesitas memorizar comandos.** Después de leer SKILL.md, el Agent sabe qué ejecutar. Para plataformas que requieren login (Xiaohongshu, Twitter, Reddit, Facebook, Instagram), di "Configura XXX" para desbloquearlas.
 

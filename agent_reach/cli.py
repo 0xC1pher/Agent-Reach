@@ -189,6 +189,18 @@ def main():
     # ── watch ──
     sub.add_parser("watch", help="Quick health check + update check (for scheduled tasks)")
 
+    # ── dispatch ──
+    p_dispatch = sub.add_parser("dispatch", help="Ejecutar una acción con tool calling automático")
+    p_dispatch.add_argument("action", help="Comando en lenguaje natural")
+    p_dispatch.add_argument("--raw", action="store_true", help="Mostrar resultado sin formateo")
+    p_dispatch.add_argument("--json", action="store_true", help="Salida en formato JSON")
+    p_dispatch.add_argument("--verbose", "-v", action="store_true", help="Mostrar qué está haciendo")
+
+    # ── ask (alias humano) ──
+    p_ask = sub.add_parser("ask", help="Preguntarle algo a Katy en lenguaje natural")
+    p_ask.add_argument("question", nargs="*", help="Tu pregunta o solicitud")
+    p_ask.add_argument("--raw", action="store_true", help="Resultado crudo")
+
     # ── version ──
     sub.add_parser("version", help="Show version")
 
@@ -231,6 +243,10 @@ def main():
         _cmd_stt(args)
     elif args.command == "katy":
         _cmd_katy(args)
+    elif args.command == "dispatch":
+        _cmd_dispatch(args)
+    elif args.command == "ask":
+        _cmd_ask(args)
 
 
 # ── Command handlers ────────────────────────────────
@@ -1532,6 +1548,69 @@ def _cmd_katy(args):
     else:
         print("Uso: agent-reach katy [listen|speak|chat|personality|permissions|memory|name|continuous|alerts|vault]")
         sys.exit(1)
+
+
+def _cmd_dispatch(args):
+    """Tool calling automático con lenguaje natural."""
+    from agent_reach.tool_dispatcher import ToolDispatcher
+    
+    dispatcher = ToolDispatcher()
+    
+    try:
+        # Ejecutar con las opciones indicadas
+        result = dispatcher.dispatch(
+            args.action,
+            raw=args.raw,
+            json_output=args.json,
+            verbose=args.verbose,
+        )
+        
+        if result.success:
+            if result.data:
+                print(result.data)
+        else:
+            print(f"[Error] {result.error}")
+            sys.exit(1)
+    except Exception as e:
+        print(f"[Exception] {e}")
+        import traceback
+        traceback.print_exc()
+        sys.exit(1)
+
+
+def _cmd_ask(args):
+    """Preguntarle algo a Katy de forma natural."""
+    from agent_reach.tool_dispatcher import ToolDispatcher
+    from agent_reach.katy_skill import get_katy_skill
+    from agent_reach.katy_llm import get_llm
+    
+    skill = get_katy_skill()
+    
+    # Unir argumentos en una pregunta
+    question = " ".join(args.question) if args.question else input("[Katy] ¿Qué quieres saber? > ").strip()
+    
+    if not question:
+        print("[Katy] No escribiste nada.")
+        return
+    
+    # Primero intentar tool calling
+    dispatcher = ToolDispatcher()
+    result = dispatcher.dispatch(question)
+    
+    if result.success and result.data:
+        # Si la herramienta devolvió resultado, usarlo
+        response = result.data
+    else:
+        # Si no, usar el LLM directamente
+        llm = get_llm()
+        llm_response = llm.chat(question)
+        response = llm_response.text if llm_response else "No pude procesar tu pregunta."
+    
+    # Mostrar respuesta
+    print(f"\n[Katy] {response}")
+    
+    # Guardar en memoria
+    skill.add_conversation_turn(question, response)
 
 
 def _cmd_stt(args):
